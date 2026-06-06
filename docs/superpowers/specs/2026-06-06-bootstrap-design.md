@@ -14,7 +14,7 @@
 ## 1. Alcance
 
 - **Prerrequisito:** dependencia de autenticación `get_current_user` (primer endpoint protegido del proyecto). Valida el Bearer token, carga el `User`, y es reusable por todos los endpoints protegidos futuros.
-- **Endpoint:** `GET /bootstrap`, protegido, read-only. Devuelve los **9 catálogos** con campos curados, filtrados por país donde corresponde.
+- **Endpoint:** `GET /bootstrap`, protegido, read-only. Devuelve los **8 catálogos** con campos curados, filtrados por país donde corresponde. (No incluye `countries` — ver decisiones.)
 - **Fuera de alcance:** datos del usuario (`incomes`, `obligations`, `plans`, `financings`) y la línea de tiempo (`cash_flow_entries`) — se piden con su propio GET. `currency_rates` no se expone (el backend convierte y devuelve montos ya convertidos). Estrategia de invalidación de caché: diferida (hoy solo se expone el campo `version`).
 
 ---
@@ -36,7 +36,6 @@
 {
   "version": "1",
   "catalogs": {
-    "countries": [ { "code": "UY", "name": "Uruguay" } ],
     "currencies": [ { "id": 1, "name": "Peso", "is_legal_tender": true } ],
     "obligation_types": [ { "id": 1, "obligation_kind": "gasto", "code": "alquiler", "name": "Alquiler / hipoteca", "description": "...", "default_priority_level": 2 } ],
     "income_types": [ { "id": 1, "code": "sueldo", "name": "Sueldo" } ],
@@ -62,7 +61,6 @@ No se vuelca la fila ORM completa: cada catálogo tiene un schema Pydantic de sa
 
 | catálogo | campos | filtro |
 |---|---|---|
-| countries | code, name | `visible = true` |
 | currencies | id, name, is_legal_tender | `country_code` = país del usuario |
 | obligation_types | id, obligation_kind, code, name, description, default_priority_level | `visible = true` |
 | income_types | id, code, name | `visible = true` |
@@ -102,7 +100,7 @@ El servicio no conoce HTTP; el router es finito.
 
 **`GET /bootstrap`:**
 - sin token → 401 `unauthenticated`.
-- con token → 200; el body tiene `version` y `catalogs` con las **9 claves**.
+- con token → 200; el body tiene `version` y `catalogs` con las **8 claves** (sin `countries`).
 - `currencies` e `institutions` filtradas al país del usuario (UY); no aparece data de otro país.
 - `priority_levels` trae los **6** (incluye el nivel 1).
 - `obligation_types` excluye un registro `visible = false` (sembrado en el test).
@@ -114,7 +112,7 @@ Fixtures: se siembran catálogos mínimos en `margin_test` (incluido un segundo 
 ## 7. Decisiones, con su porqué
 
 - **Wrapper `{version, catalogs}`:** evita un cambio que rompa el contrato cuando se agregue metadata (cache/versión); el `version` ya deja sembrada la invalidación futura (TODO de Notion).
-- **9 catálogos (incluye los de tarjeta):** el front los necesita para la feature de tarjetas; tenerlos en el bootstrap evita una segunda llamada. *(Ajuste sobre Notion, que listaba 7.)*
+- **8 catálogos (incluye los de tarjeta, NO `countries`):** se suman los 2 de tarjeta (el front los necesita y evita otra llamada). Se quita `countries`: el bootstrap es post-login y el país es fijo (UY) — no se elige ni se muestra en la app, así que `countries` no tiene consumidor. Un futuro selector de país viviría en el registro (pre-login, endpoint público aparte). *(Ajuste sobre Notion, que listaba 7 incluyendo countries.)*
 - **`priority_levels` completos:** el bootstrap es un diccionario de traducción; excluir el nivel 1 rompería mostrar items de ese nivel. La restricción de selección es del front.
 - **Campos curados con schemas Pydantic:** contrato estable, no se filtran columnas internas.
 - **`get_current_user` reusable:** primer endpoint protegido; la dependencia sirve para todos los futuros.
