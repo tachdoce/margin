@@ -51,7 +51,7 @@ El password jamás se persiste ni se devuelve en claro.
 | columna | tipo | null | notas |
 |---|---|---|---|
 | id | uuid PK | no | |
-| country_code | varchar(2) FK→countries | no | fijado `'UY'` en el MVP |
+| country_code | varchar(2) FK→countries | no | **sin DEFAULT en la tabla.** Lo inserta el servicio (hoy `'UY'` fijo; a futuro, el país que elija el usuario) |
 | display_name | varchar(80) | sí | opcional |
 | deleted_at | timestamp | sí | **soft-delete** (NULL = vigente) |
 | created_at | timestamp | no | |
@@ -175,5 +175,8 @@ construya el subdominio de flujo de dinero. Queda anotado como pendiente.
   en vez del shape automático de Pydantic.
 - **`credentials_invalid` único en login:** no revelar si el email existe o si la cuenta está de baja
   (no dar información a un atacante).
+- **`country_code` sin DEFAULT en la tabla:** el valor lo inserta el servicio (hoy `'UY'` fijo), no la BD.
+  Así, cuando el usuario pueda elegir su país, solo cambia la lógica del servicio y el esquema queda intacto;
+  evita hornear un sesgo a Uruguay en la base.
 - **JWT largo sin refresh (MVP):** simplicidad; el refresh se difiere. Decisión de Notion.
 - **Plan default diferido:** ver sección 7.
