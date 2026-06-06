@@ -78,8 +78,8 @@ mobile lo consumen sin leer el código del backend.
 - **Vite** — bundler/dev server (`npm run dev`).
 - **Vue Router** — navegación entre páginas (`/incomes`, `/plans`, …).
 
-> La web es **fea a propósito**: es banco de pruebas del API, no un producto. Botones que
-> disparan endpoints y muestran el JSON. Cero diseño.
+> La web tiene **poco diseño a propósito**: es banco de pruebas del API, no un producto.
+> Botones que disparan endpoints y muestran el JSON. La prioridad es la funcionalidad, no la estética.
 
 ---
 
@@ -119,7 +119,7 @@ web/
 │   ├── api/             ← cliente HTTP que apunta al backend
 │   └── main.js
 ├── index.html
-└── CLAUDE.md            ← convenciones de la web ("fea a propósito")
+└── CLAUDE.md            ← convenciones de la web ("poco diseño a propósito")
 ```
 
 Misión única: disparar endpoints y mostrar el resultado. Apunta al backend por HTTP
@@ -149,7 +149,7 @@ El ciclo que seguimos en **cada pieza de trabajo**:
 - **`CLAUDE.md`** — contexto que la IA lee al arrancar cada sesión. Alta señal, poco ruido.
   - Raíz: qué es el proyecto, los dos pedazos, punteros a Notion, el flujo de trabajo.
   - `backend/`: convenciones de FastAPI/SQLAlchemy/Alembic, reglas de plata/enums, comandos (correr, testear, migrar).
-  - `web/`: convenciones de Vue, "fea a propósito", cómo apunta al backend.
+  - `web/`: convenciones de Vue, "poco diseño a propósito", cómo apunta al backend.
   - Regla: punteros, no copias. Nada que la IA ya pueda leer del código. Nada que cambie todo el tiempo.
 - **`docs/specs/`** — specs de diseño por feature.
 - **`docs/plans/`** — planes de implementación por feature.
