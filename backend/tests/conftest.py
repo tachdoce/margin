@@ -18,7 +18,7 @@ def db_session() -> Session:
     Base.metadata.create_all(bind=test_engine)
     connection = test_engine.connect()
     transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
+    session = TestingSessionLocal(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:
@@ -32,3 +32,13 @@ def client(db_session: Session) -> TestClient:
     app.dependency_overrides[get_db] = lambda: db_session
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def seed_uy(db_session):
+    from decimal import Decimal
+
+    from app.models.country import Country
+
+    db_session.add(Country(code="UY", name="Uruguay", visible=True, vat_rate=Decimal("22.00")))
+    db_session.flush()
