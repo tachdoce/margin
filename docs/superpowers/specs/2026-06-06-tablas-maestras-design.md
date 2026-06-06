@@ -55,7 +55,18 @@ La migración crea las tablas en orden válido de FK: `currencies` antes de `cur
 | value | numeric(14,6) | no | 1 unidad en moneda legal |
 | is_projected | boolean | no | false=real, true=proyección |
 
-**PK compuesta** (`currency_id`, `rate_date`). **Sin seed** (lo llena el backend).
+**PK compuesta** (`currency_id`, `rate_date`).
+
+**Seed:** serie diaria de **2026-04-01 a 2027-12-31 (inclusive)**, todas con `is_projected = true` y valor **constante por moneda** (la moneda legal `id=1` no lleva cotización):
+
+| currency_id | moneda | value |
+|---|---|---|
+| 2 | Dólar compra | 39 |
+| 3 | Dólar | 41 |
+| 4 | Unidad Indexada | 6.55 |
+| 5 | Unidad Reajustable | 1921.36 |
+
+Son **640 días × 4 monedas = 2560 filas**. **Se generan por código en la migración** (loop sobre el rango de fechas con `op.bulk_insert`), no a mano. Es data de proyección de prueba para destrabar las features que convierten monedas; cuando el backend traiga cotizaciones reales, las pisa por upsert (`is_projected = false`).
 
 ### priority_levels
 | columna | tipo | null | notas |
@@ -106,7 +117,7 @@ Por cada tabla, tras `alembic upgrade head`, verificar esquema + seed con `psql`
 - `priority_levels`: 6 filas (1–6).
 - `institutions`: 5 filas, todas `visible=t`.
 - `review_finding_codes`: 10 filas.
-- `currency_rates`: tabla creada, 0 filas (sin seed), PK compuesta.
+- `currency_rates`: **2560 filas** (640 días × 4 monedas), todas `is_projected=t`. Ej.: `select count(*) from currency_rates;` → 2560; `select distinct value from currency_rates where currency_id=4;` → `6.550000`.
 
 ---
 
