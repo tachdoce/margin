@@ -14,6 +14,10 @@ def test_register_creates_user_and_returns_token(client, db_session, seed_uy):
     assert body["user"]["display_name"] == "Juan"
     assert body["token"]
 
+    # el response NO expone metadata interna del usuario
+    assert "created_at" not in body["user"]
+    assert "updated_at" not in body["user"]
+
     identity = db_session.execute(select(AuthIdentity)).scalars().one()
     assert identity.identifier == "juan@example.com"  # normalizado
     assert identity.password_hash != "miclave123"  # hasheado

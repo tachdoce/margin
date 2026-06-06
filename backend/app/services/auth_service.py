@@ -2,6 +2,7 @@
 import re
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -40,7 +41,13 @@ def register_user(db: Session, data: RegisterRequest) -> tuple[User, str]:
         password_hash=hash_password(data.password),
     )
     db.add(identity)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Carrera contra el UNIQUE(provider, identifier): el pre-check pasó pero otra
+        # transacción insertó el mismo email en el medio. Se reporta como 409, no 500.
+        db.rollback()
+        raise AppError(ErrorCode.email_already_registered, field="email") from exc
     db.refresh(user)
 
     return user, create_access_token(user.id)

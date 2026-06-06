@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt
@@ -17,7 +18,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str | uuid.UUID) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expire_days)
     payload = {"user_id": str(user_id), "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
