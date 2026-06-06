@@ -37,11 +37,13 @@ app móvil viviendo aparte.
 ```
 margin/                  ← un repo git (mío)
 ├── backend/             ← FastAPI + SQLAlchemy + Alembic + Postgres
+│   └── CLAUDE.md        ← contexto del backend para la IA
 ├── web/                 ← Vue 3 + Vite (banco de pruebas de endpoints)
+│   └── CLAUDE.md        ← contexto de la web para la IA
 ├── docs/
 │   ├── specs/           ← specs de diseño (este archivo y los próximos)
 │   └── plans/           ← planes de implementación
-├── CLAUDE.md            ← contexto raíz para la IA
+├── CLAUDE.md            ← contexto raíz para la IA (carga siempre)
 └── README.md
 
 (aparte, otro repo)
