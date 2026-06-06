@@ -15,11 +15,16 @@ FastAPI + SQLAlchemy 2.0 + Alembic + Postgres 16. Python 3.13.
 - `app/core/db.py` — engine, SessionLocal, Base, get_db.
 - `app/models/` — SQLAlchemy (registrar cada modelo en `__init__.py` para Alembic).
 - `app/schemas/` — Pydantic (request/response).
-- `app/routers/` — endpoints por subdominio.
+- `app/services/` — lógica de negocio (no conoce HTTP; lanza AppError). Ej: `auth_service`.
+- `app/routers/` — endpoints por subdominio (finitos: delegan en el servicio).
+- `app/core/security.py` — hash de password (bcrypt cost 12) + JWT (HS256).
+- `app/core/errors.py` — catálogo de error codes + AppError + handlers (formato de error de GLOBAL).
 - `alembic/` — migraciones.
-- `tests/` — pytest (fixtures `db_session` + `client` en conftest).
+- `tests/` — pytest (fixtures `db_session` + `client` + `seed_uy` en conftest; sesión con savepoint).
 
 ## Convenciones (ver CLAUDE.md raíz y Notion)
 - Plata/tasas: `Numeric` + `Decimal`, nunca float.
 - TDD: test primero. Cada modelo nuevo se registra en `app/models/__init__.py`.
 - Pydantic serializa `Decimal` como string en JSON (preserva precisión).
+- Errores: lanzar `AppError(ErrorCode.x)` desde el servicio; nunca `HTTPException`. El formato lo rinden los handlers.
+- Endpoints: router finito → servicio. El router no valida reglas de negocio.
