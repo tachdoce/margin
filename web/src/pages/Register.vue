@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, saveSession } from '../api'
+import { api, saveSession, ensureBootstrap } from '../api'
 
 const router = useRouter()
 const email = ref('')
@@ -14,6 +14,7 @@ async function submit() {
   try {
     const data = await api.register(email.value, password.value, displayName.value)
     saveSession(data)
+    await ensureBootstrap()
     router.push('/dashboard')
   } catch (e) {
     error.value = e.message

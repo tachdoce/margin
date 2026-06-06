@@ -85,3 +85,30 @@ input:focus { border-color: var(--accent); }
 .error { color: var(--error); font-size: 0.85rem; }
 
 a { color: var(--accent); }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+.catalogs { list-style: none; display: flex; flex-direction: column; gap: 0.25rem; }
+.catalog-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.catalog-head:hover { border-color: var(--accent); }
+.catalog-items {
+  list-style: none;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.catalog-items li { font-size: 0.82rem; }

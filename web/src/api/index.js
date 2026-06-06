@@ -32,6 +32,9 @@ export const api = {
   login(email, password) {
     return request('POST', '/auth/login', { email, password })
   },
+  bootstrap() {
+    return request('GET', '/bootstrap')
+  },
 }
 
 export function saveSession({ user, token }) {
@@ -47,8 +50,27 @@ export function getUser() {
 export function clearSession() {
   localStorage.removeItem('token')
   localStorage.removeItem('user')
+  localStorage.removeItem('bootstrap')
 }
 
 export function isAuthenticated() {
   return !!localStorage.getItem('token')
+}
+
+const BOOTSTRAP_KEY = 'bootstrap'
+
+export function getBootstrap() {
+  const raw = localStorage.getItem(BOOTSTRAP_KEY)
+  return raw ? JSON.parse(raw) : null
+}
+
+// Cache-first: si ya está cacheado lo devuelve; si no (o force=true) lo trae y cachea.
+export async function ensureBootstrap({ force = false } = {}) {
+  if (!force) {
+    const cached = getBootstrap()
+    if (cached) return cached
+  }
+  const data = await api.bootstrap()
+  localStorage.setItem(BOOTSTRAP_KEY, JSON.stringify(data))
+  return data
 }
