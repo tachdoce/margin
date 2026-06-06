@@ -19,6 +19,7 @@ FastAPI + SQLAlchemy 2.0 + Alembic + Postgres 16. Python 3.13.
 - `app/routers/` — endpoints por subdominio (finitos: delegan en el servicio).
 - `app/core/security.py` — hash de password (bcrypt cost 12) + JWT (HS256).
 - `app/core/errors.py` — catálogo de error codes + AppError + handlers (formato de error de GLOBAL).
+- `app/core/deps.py` — `get_current_user` (auth para rutas protegidas: `Depends(get_current_user)`).
 - `alembic/` — migraciones.
 - `tests/` — pytest (fixtures `db_session` + `client` + `seed_uy` en conftest; sesión con savepoint).
 
