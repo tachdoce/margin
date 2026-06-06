@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     # Socket Unix + auth peer (usuario del SO). Sin host = socket por defecto.
     database_url: str = "postgresql+psycopg2:///margin"
     test_database_url: str = "postgresql+psycopg2:///margin_test"
+    secret_key: str = "dev-insecure-change-me"
+    jwt_expire_days: int = 45
 
 
 settings = Settings()
