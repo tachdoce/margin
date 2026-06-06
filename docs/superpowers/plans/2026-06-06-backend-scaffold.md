@@ -238,7 +238,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import settings
 from app.core.db import Base, get_db
 from app.main import app
-import app.models  # noqa: F401  (registra los modelos en Base.metadata)
+from app import models as _models  # noqa: F401  (registra modelos sin pisar el nombre `app`)
 
 test_engine = create_engine(settings.test_database_url)
 TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
