@@ -18,3 +18,6 @@ Este repo es **backend + web de pruebas**. La app móvil vive aparte y consume e
 
 ## Flujo de trabajo
 Spec en `docs/superpowers/specs/` → plan en `docs/superpowers/plans/` → TDD → commit chico → review → verificación.
+
+**Git (todo el equipo):** trabajar en rama `feat/<nombre>` con commits chicos; integrar a `main` con
+**squash-merge** (un commit por feature). Detalle en `docs/superpowers/specs/2026-06-06-estructura-y-flujo-de-trabajo-design.md` (sección 6).

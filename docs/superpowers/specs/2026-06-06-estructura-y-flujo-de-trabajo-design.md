@@ -139,10 +139,25 @@ El ciclo que seguimos en **cada pieza de trabajo**:
 4. **Commits chicos / rebanadas verticales.** Cada paso que pasa sus tests es un commit que cuenta una historia.
 5. **Code review antes de mergear.** La IA revisa el diff; yo evalúo cada sugerencia con criterio (no acepto ciego).
 6. **Verificación antes de cantar victoria.** "Funciona" se demuestra corriendo el comando y mirando la salida.
+7. **Squash-merge a `main`.** Cada feature se trabaja en una rama `feat/...` con commits chicos, pero al integrar se **colapsan en un solo commit** en `main` (un commit por feature). `main` queda con historia limpia; el detalle paso a paso vive en la rama.
 
 > El proceso se siente más lento en el primer paso y evita el agujero clásico: código
 > plausible que se rompe y nadie entiende por qué. En un producto financiero, esa
 > disciplina no es opcional.
+
+### Convención de Git (todo el equipo)
+
+- **Ramas:** nunca se commitea directo a `main` el trabajo de una feature; se usa una rama `feat/<nombre>`.
+- **Commits en la rama:** chicos y verdes (los tests pasan en cada commit). Mensajes tipo `feat(scope): ...`, `fix(...)`, `docs(...)`, `chore(...)`.
+- **Integración: squash-merge.** Un commit por feature en `main`:
+  ```bash
+  git switch main
+  git merge --squash feat/<rama>
+  git commit -m "feat: <resumen de la feature>"
+  git branch -D feat/<rama>
+  ```
+  (Con Pull Requests en GitHub, equivale a elegir **"Squash and merge"**. Recomendado: configurar el repo para permitir **solo** squash-merge, así la convención se aplica sola.)
+- **Excepciones:** cambios triviales de documentación pueden ir directo a `main`.
 
 ---
 
