@@ -6,3 +6,7 @@ from app.models.auth_identity import AuthIdentity  # noqa: F401
 from app.models.priority_level import PriorityLevel  # noqa: F401
 from app.models.institution import Institution  # noqa: F401
 from app.models.review_finding_code import ReviewFindingCode  # noqa: F401
+from app.models.credit_card_network import CreditCardNetwork  # noqa: F401
+from app.models.credit_card_item_type import CreditCardItemType  # noqa: F401
+from app.models.obligation_type import ObligationType  # noqa: F401
+from app.models.income_type import IncomeType  # noqa: F401
