@@ -20,9 +20,25 @@
 
 ## 2. Proyecto y stack
 
-- Vue 3 (`<script setup>`) + Vite + Vue Router, nuevo en `margin/web/`.
+- Vue 3 (`<script setup>`) + Vite + Vue Router, nuevo en `margin/web/` (carpeta **hermana de `backend/`** en el monorepo).
 - Dependencias mínimas: `vue`, `vue-router`, `vite`, `@vitejs/plugin-vue`. Nada más (sin pdfjs).
 - Dev server de Vite (por defecto `http://localhost:5173`). El backend corre en `http://localhost:8000`.
+
+**Estructura interna** (sigue la sección 5 del spec de estructura y flujo):
+
+```
+web/
+├── src/
+│   ├── pages/      ← Register.vue, Login.vue, Dashboard.vue
+│   ├── router/     ← Vue Router + guard (index.js)
+│   ├── api/        ← cliente HTTP del backend (index.js)
+│   ├── style.css   ← tokens del design-system + componentes
+│   └── main.js
+├── index.html
+├── .env            ← VITE_API_BASE_URL (no se commitea)
+├── .env.example
+└── CLAUDE.md
+```
 
 ---
 
@@ -37,10 +53,11 @@
 
 ---
 
-## 4. Cliente del API (`src/api.js`)
+## 4. Cliente del API (`src/api/`)
 
 Wrapper `fetch` fino. Matchea el **contrato real** del backend:
 
+- **URL base desde env, NO hardcodeada:** `import.meta.env.VITE_API_BASE_URL` (default dev `http://localhost:8000`, vive en `.env`). Regla de la sección 5 del spec de estructura.
 - `register(email, password, displayName?)` → `POST /auth/register` con body `{ email, password, display_name }` (omitir `display_name` si vacío).
 - `login(email, password)` → `POST /auth/login` con body `{ email, password }`.
 - Ambos devuelven `{ user: { id, country_code, display_name }, token }`.
@@ -50,7 +67,7 @@ Wrapper `fetch` fino. Matchea el **contrato real** del backend:
 
 ---
 
-## 5. Vistas
+## 5. Páginas (`src/pages/`)
 
 - **`Register.vue`** — form con `email`, `password`, `display_name` (opcional). Al enviar: `api.register(...)`, guarda token+user, navega a `/dashboard`. Muestra el `message` del backend si falla (ej. `email_already_registered`, `password_too_short`, `email_invalid`), resaltando el `field` si viene.
 - **`Login.vue`** — form con `email`, `password`. Al enviar: `api.login(...)`, guarda token+user, navega a `/dashboard`. Muestra `"Credenciales inválidas."` ante `credentials_invalid`. Link a `/register`.
@@ -58,7 +75,7 @@ Wrapper `fetch` fino. Matchea el **contrato real** del backend:
 
 ---
 
-## 6. Router y guard
+## 6. Router y guard (`src/router/`)
 
 - Rutas: `/login`, `/register`, `/dashboard`.
 - `/` redirige a `/dashboard` si hay token, si no a `/login`.
