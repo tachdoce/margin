@@ -22,3 +22,6 @@ dist/
 .DS_Store
 .idea/
 *.swp
+
+# Visual companion mockups (brainstorming)
+.superpowers/
