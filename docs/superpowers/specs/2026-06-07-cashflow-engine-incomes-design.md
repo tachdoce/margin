@@ -101,6 +101,16 @@ tiene una sola moneda, pero forma parte de la clave por consistencia con la fami
 La unicidad de la clave la garantiza el motor corriendo secuencial bajo el lock `FOR UPDATE` del income; no
 hay UNIQUE en BD.
 
+**Por qué la clave es por mes y no por día (caso: cambia el día de cobro).** Si un income recurrente pasa de
+`payment_day = 5` a `payment_day = 20`, para cada mes futuro la entry existente (`event_date` el día 5) y la
+objetivo (el día 20) comparten la **misma clave lógica** `(año, mes, currency_id)` — porque la clave no
+incluye el día. La reconciliación entra por la rama **UPDATE** y mueve el `event_date` del 5 al 20 **in
+place**: la fila conserva su `id` y los `cash_flow_payments` imputados; no se duplica ni se borra. El nuevo
+`event_date` se calcula con `compute_event_date(año, mes, 20, income.shift_weekends)`, así que respeta el
+corrimiento de fin de semana. (Solo afecta meses futuros: los pasados no están en el conjunto objetivo.) Si la
+clave incluyera el día, el cambio se traduciría en delete + insert, perdiendo identidad y pagos — por eso es
+por mes.
+
 ---
 
 ## 4. Decisiones, con su porqué
@@ -138,6 +148,8 @@ currency + income_type + user + income):
 - **soft-deleted:** `deleted_at` no NULL → conjunto vacío (no quedan entries futuras).
 - **idempotencia:** correr el motor 2× deja el mismo conjunto (no duplica).
 - **cambio de `amount`:** re-correr con otro monto actualiza las entries existentes sin duplicar.
+- **cambio de `payment_day` (5 → 20):** re-correr mueve el `event_date` de cada mes futuro del día 5 al 20
+  **in place** — mismo count, misma fila (mismo `id`), sin duplicar; respetando `shift_weekends`.
 - **reconciliación con borrado:** achicar `total_months` borra las futuras sin pago real; una entry con un
   `cash_flow_payments` real imputado sobrevive.
 - **corrimiento de finde:** un income con `shift_weekends=True` cuyo día cae fin de semana produce entries en
