@@ -107,9 +107,11 @@ objetivo (el día 20) comparten la **misma clave lógica** `(año, mes, currency
 incluye el día. La reconciliación entra por la rama **UPDATE** y mueve el `event_date` del 5 al 20 **in
 place**: la fila conserva su `id` y los `cash_flow_payments` imputados; no se duplica ni se borra. El nuevo
 `event_date` se calcula con `compute_event_date(año, mes, 20, income.shift_weekends)`, así que respeta el
-corrimiento de fin de semana. (Solo afecta meses futuros: los pasados no están en el conjunto objetivo.) Si la
-clave incluyera el día, el cambio se traduciría en delete + insert, perdiendo identidad y pagos — por eso es
-por mes.
+corrimiento de fin de semana. **Afecta este mes y los siguientes:** toda fila cuyo **nuevo** `event_date` sea
+`>= today` se mueve (incluido el mes en curso, si el día 20 de este mes todavía no pasó). Caso borde: si el
+nuevo día de este mes ya quedó atrás (`día 20 < today`), el mes en curso no entra al conjunto objetivo y su
+entry queda como estaba — no se reprograma una fecha del mes que ya pasó. Si la clave incluyera el día, el
+cambio se traduciría en delete + insert, perdiendo identidad y pagos — por eso es por mes.
 
 ---
 
