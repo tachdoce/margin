@@ -11,3 +11,5 @@ from app.models.credit_card_item_type import CreditCardItemType  # noqa: F401
 from app.models.obligation_type import ObligationType  # noqa: F401
 from app.models.income_type import IncomeType  # noqa: F401
 from app.models.income import Income  # noqa: F401
+from app.models.plan import Plan  # noqa: F401
+from app.models.plan_movement import PlanMovement  # noqa: F401
