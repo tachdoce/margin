@@ -35,6 +35,21 @@ export const api = {
   bootstrap() {
     return request('GET', '/bootstrap')
   },
+  listIncomes() {
+    return request('GET', '/incomes')
+  },
+  createIncome(body) {
+    return request('POST', '/incomes', body)
+  },
+  updateIncome(id, body) {
+    return request('PATCH', `/incomes/${id}`, body)
+  },
+  deleteIncome(id) {
+    return request('DELETE', `/incomes/${id}`)
+  },
+  reactivateIncome(id) {
+    return request('POST', `/incomes/${id}/reactivate`)
+  },
 }
 
 export function saveSession({ user, token }) {

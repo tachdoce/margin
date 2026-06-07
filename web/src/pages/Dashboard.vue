@@ -1,9 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { getUser, clearSession, getBootstrap, ensureBootstrap } from '../api'
+import AppNav from '../components/AppNav.vue'
+import { getUser, getBootstrap, ensureBootstrap } from '../api'
 
-const router = useRouter()
 const user = getUser()
 
 const bootstrap = ref(getBootstrap())
@@ -39,15 +38,11 @@ function itemLabel(item) {
   }
   return JSON.stringify(item)
 }
-
-function logout() {
-  clearSession()
-  router.push('/login')
-}
 </script>
 
 <template>
   <div class="screen">
+    <AppNav />
     <div class="content">
       <h1>Dashboard</h1>
       <div class="field">
@@ -83,8 +78,6 @@ function logout() {
           </li>
         </ul>
       </div>
-
-      <button class="ghost" @click="logout">Cerrar sesión</button>
     </div>
   </div>
 </template>

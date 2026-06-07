@@ -112,3 +112,131 @@ a { color: var(--accent); }
   gap: 0.25rem;
 }
 .catalog-items li { font-size: 0.82rem; }
+
+/* Navbar + drawer (AppNav) */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.hamburger {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+  padding: 0;
+}
+.navbar-title { font-weight: 700; }
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  z-index: 25;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 30;
+  width: 68%;
+  max-width: 280px;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+}
+.drawer-open { transform: translateX(0); }
+.drawer-item {
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.drawer-item:hover { background: var(--bg); }
+.drawer-item.router-link-active {
+  background: #eef2ff;
+  color: var(--accent);
+  font-weight: 600;
+}
+.drawer-logout {
+  margin-top: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* Select (mismo look que input) */
+select {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--text);
+  background: white;
+  outline: none;
+}
+select:focus { border-color: var(--accent); }
+
+/* Form de ingresos */
+.income-form { display: flex; flex-direction: column; gap: 0.85rem; }
+.seg { display: flex; gap: 0.5rem; }
+.seg-btn {
+  flex: 1;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg-active { background: #eef2ff; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--text-secondary); }
+.check input { width: auto; }
+
+/* Tarjetas de ingreso */
+.income-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+.income-card.deleted { opacity: 0.65; }
+.income-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.income-desc { font-weight: 600; }
+.income-amount { font-weight: 700; white-space: nowrap; }
+.badge {
+  font-size: 0.7rem;
+  background: #fee2e2;
+  color: var(--error);
+  padding: 0.05rem 0.4rem;
+  border-radius: 10px;
+  margin-left: 0.25rem;
+}
+.income-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.income-actions .ghost { padding: 0.35rem 0.75rem; font-size: 0.85rem; }
+.ghost.danger { color: var(--error); }
+.ghost.danger:hover { border-color: var(--error); color: var(--error); }
+.ghost.accent { color: var(--accent); border-color: var(--accent); }
