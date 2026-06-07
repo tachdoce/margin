@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
+from app.services import plan_service
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.auth_identity import AuthIdentity
 from app.models.user import User
@@ -41,6 +42,7 @@ def register_user(db: Session, data: RegisterRequest) -> tuple[User, str]:
         password_hash=hash_password(data.password),
     )
     db.add(identity)
+    plan_service.create_default_plan(db, user)
     try:
         db.commit()
     except IntegrityError as exc:

@@ -42,3 +42,13 @@ def seed_uy(db_session):
 
     db_session.add(Country(code="UY", name="Uruguay", visible=True, vat_rate=Decimal("22.00")))
     db_session.flush()
+
+
+@pytest.fixture
+def seed_uy_currency(db_session, seed_uy):
+    from app.models.currency import Currency
+
+    db_session.add(
+        Currency(id=1, country_code="UY", name="Peso", is_legal_tender=True, allowed_in_credit_card=True)
+    )
+    db_session.flush()

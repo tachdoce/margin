@@ -52,8 +52,8 @@ def test_bootstrap_requires_auth(client, seed_uy):
 
 
 def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
-    token = _register_token(client)
     _seed_catalogs(db_session)
+    token = _register_token(client)
 
     resp = client.get("/bootstrap", headers={"Authorization": f"Bearer {token}"})
 
