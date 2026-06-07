@@ -59,3 +59,7 @@ class IncomeOut(BaseModel):
             shift_weekends=income.shift_weekends,
             is_deleted=income.deleted_at is not None,
         )
+
+
+class IncomeListOut(BaseModel):
+    incomes: list[IncomeOut]

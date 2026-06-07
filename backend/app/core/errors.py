@@ -23,6 +23,7 @@ class ErrorCode(Enum):
     total_months_invalid = (422, "La cantidad de meses debe ser 1 o más.")
     income_form_inconsistent = (422, "Las columnas no corresponden a la forma del ingreso (recurrente o duración fija).")
     field_not_nullable = (422, "Ese campo no puede ser nulo.")
+    income_not_deleted = (409, "Este ingreso no está borrado.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

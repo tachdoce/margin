@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -148,6 +149,46 @@ def update_income(db: Session, user: User, income_id: uuid.UUID, payload: Income
     if "shift_weekends" in fields:
         income.shift_weekends = payload.shift_weekends
 
+    db.commit()
+    db.refresh(income)
+    return income
+
+
+def list_incomes(db: Session, user: User) -> list[Income]:
+    return list(
+        db.execute(
+            select(Income).where(Income.user_id == user.id).order_by(Income.created_at.desc())
+        ).scalars()
+    )
+
+
+def delete_income(db: Session, user: User, income_id: uuid.UUID) -> None:
+    """Soft-delete provisorio: setea deleted_at. (El DELETE híbrido real llega con el CashFlowEngine.)"""
+    income = db.execute(
+        select(Income).where(
+            Income.id == income_id,
+            Income.user_id == user.id,
+            Income.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if income is None:
+        raise AppError(ErrorCode.not_found)
+    income.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+
+
+def reactivate_income(db: Session, user: User, income_id: uuid.UUID) -> Income:
+    income = db.execute(
+        select(Income).where(
+            Income.id == income_id,
+            Income.user_id == user.id,
+        )
+    ).scalar_one_or_none()
+    if income is None:
+        raise AppError(ErrorCode.not_found)
+    if income.deleted_at is None:
+        raise AppError(ErrorCode.income_not_deleted)
+    income.deleted_at = None
     db.commit()
     db.refresh(income)
     return income

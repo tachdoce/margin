@@ -1,11 +1,14 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
 
+from app.core.security import create_access_token
 from app.models.country import Country
 from app.models.currency import Currency
 from app.models.income import Income
 from app.models.income_type import IncomeType
+from app.models.user import User
 
 
 def _seed_refs(db_session):
@@ -295,3 +298,144 @@ def test_create_payment_day_zero_invalid(client, db_session, seed_uy):
     resp = client.post("/incomes", json=_recurring_body(payment_day=0), headers=_auth(client))
     assert resp.status_code == 422
     assert resp.json()["code"] == "payment_day_invalid"
+
+
+def test_get_empty(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    resp = client.get("/incomes", headers=_auth(client))
+    assert resp.status_code == 200
+    assert resp.json() == {"incomes": []}
+
+
+def test_get_requires_auth(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    resp = client.get("/incomes")
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "unauthenticated"
+
+
+def test_get_orders_by_created_desc(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    user = User(country_code="UY", display_name="T")
+    db_session.add(user)
+    db_session.flush()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    db_session.add(Income(
+        user_id=user.id, income_type_id=1, currency_id=1, amount=Decimal("1.00"),
+        description="ingreso viejo", is_monthly_recurring=True, payment_day=1, shift_weekends=False,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    ))
+    db_session.add(Income(
+        user_id=user.id, income_type_id=1, currency_id=1, amount=Decimal("2.00"),
+        description="ingreso nuevo", is_monthly_recurring=True, payment_day=1, shift_weekends=False,
+        created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+    ))
+    db_session.flush()
+    resp = client.get("/incomes", headers=headers)
+    assert resp.status_code == 200
+    descriptions = [i["description"] for i in resp.json()["incomes"]]
+    assert descriptions == ["ingreso nuevo", "ingreso viejo"]
+
+
+def test_get_only_own_incomes(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    owner = _auth(client, email="owner@b.com")
+    _create_recurring(client, owner)
+    other = _auth(client, email="other@b.com")
+    resp = client.get("/incomes", headers=other)
+    assert resp.status_code == 200
+    assert resp.json()["incomes"] == []
+
+
+def test_delete_soft_deletes(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+    resp = client.delete(f"/incomes/{income['id']}", headers=headers)
+    assert resp.status_code == 204
+    listed = client.get("/incomes", headers=headers).json()["incomes"]
+    assert len(listed) == 1
+    assert listed[0]["id"] == income["id"]
+    assert listed[0]["is_deleted"] is True
+
+
+def test_delete_twice_not_found(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+    assert client.delete(f"/incomes/{income['id']}", headers=headers).status_code == 204
+    resp = client.delete(f"/incomes/{income['id']}", headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+def test_delete_other_users_income_not_found(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    owner = _auth(client, email="owner@b.com")
+    income = _create_recurring(client, owner)
+    other = _auth(client, email="other@b.com")
+    resp = client.delete(f"/incomes/{income['id']}", headers=other)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+def test_delete_missing_not_found(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    resp = client.delete("/incomes/00000000-0000-0000-0000-000000000000", headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+def test_delete_requires_auth(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    resp = client.delete("/incomes/00000000-0000-0000-0000-000000000000")
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "unauthenticated"
+
+
+def test_reactivate_revives(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+    client.delete(f"/incomes/{income['id']}", headers=headers)
+    resp = client.post(f"/incomes/{income['id']}/reactivate", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_deleted"] is False
+    listed = client.get("/incomes", headers=headers).json()["incomes"]
+    assert listed[0]["is_deleted"] is False
+
+
+def test_reactivate_not_deleted_conflict(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+    resp = client.post(f"/incomes/{income['id']}/reactivate", headers=headers)
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "income_not_deleted"
+
+
+def test_reactivate_other_users_income_not_found(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    owner = _auth(client, email="owner@b.com")
+    income = _create_recurring(client, owner)
+    client.delete(f"/incomes/{income['id']}", headers=owner)
+    other = _auth(client, email="other@b.com")
+    resp = client.post(f"/incomes/{income['id']}/reactivate", headers=other)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+def test_reactivate_missing_not_found(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    resp = client.post("/incomes/00000000-0000-0000-0000-000000000000/reactivate", headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+def test_reactivate_requires_auth(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    resp = client.post("/incomes/00000000-0000-0000-0000-000000000000/reactivate")
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "unauthenticated"
