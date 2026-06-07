@@ -12,6 +12,17 @@ class ErrorCode(Enum):
     email_invalid = (422, "Email inválido.")
     password_too_short = (422, "La contraseña debe tener al menos 8 caracteres.")
     validation_failed = (422, "Hay errores en el formulario.")
+    not_found = (404, "No encontrado.")
+    income_type_invalid = (422, "Tipo de ingreso no válido.")
+    currency_not_available = (422, "Esa moneda no está disponible. Elegí otra.")
+    description_invalid = (422, "La descripción es obligatoria y debe tener al menos 8 caracteres.")
+    amount_invalid = (422, "El monto debe ser mayor a 0.")
+    payment_day_invalid = (422, "El día de cobro debe estar entre 1 y 31.")
+    recurring_income_requires_payment_day = (422, "Un ingreso recurrente necesita un día de cobro.")
+    fixed_term_income_requires_dates = (422, "Un ingreso de duración fija necesita fecha de primer cobro y cantidad de meses.")
+    total_months_invalid = (422, "La cantidad de meses debe ser 1 o más.")
+    income_form_inconsistent = (422, "Las columnas no corresponden a la forma del ingreso (recurrente o duración fija).")
+    field_not_nullable = (422, "Ese campo no puede ser nulo.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
