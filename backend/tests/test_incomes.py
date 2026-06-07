@@ -1,9 +1,12 @@
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
 
 from app.core.security import create_access_token
+from app.models.cash_flow_entry import CashFlowEntry
+from app.models.cash_flow_payment import CashFlowPayment
 from app.models.country import Country
 from app.models.currency import Currency
 from app.models.income import Income
@@ -181,6 +184,34 @@ def _create_recurring(client, headers, **over):
     return client.post("/incomes", json=_recurring_body(**over), headers=headers).json()
 
 
+def _entries_of(db_session, income_id):
+    return list(
+        db_session.execute(
+            select(CashFlowEntry).where(
+                CashFlowEntry.source_type == "ingreso",
+                CashFlowEntry.source_id == uuid.UUID(income_id),
+            )
+        ).scalars()
+    )
+
+
+def _add_real_payment(db_session, income_id):
+    """Imputa un pago real (plan_id NULL) a una entry del income; devuelve esa entry.id."""
+    entry = (
+        db_session.execute(
+            select(CashFlowEntry).where(
+                CashFlowEntry.source_type == "ingreso",
+                CashFlowEntry.source_id == uuid.UUID(income_id),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    db_session.add(CashFlowPayment(cash_flow_entry_id=entry.id, amount=Decimal("1000.00")))
+    db_session.flush()
+    return entry.id
+
+
 def test_patch_payment_day(client, db_session, seed_uy):
     _seed_refs(db_session)
     headers = _auth(client)
@@ -347,12 +378,35 @@ def test_get_only_own_incomes(client, db_session, seed_uy):
     assert resp.json()["incomes"] == []
 
 
-def test_delete_soft_deletes(client, db_session, seed_uy):
+def test_delete_hard_when_no_real_payments(client, db_session, seed_uy):
     _seed_refs(db_session)
     headers = _auth(client)
     income = _create_recurring(client, headers)
+    assert len(_entries_of(db_session, income["id"])) >= 1
+
     resp = client.delete(f"/incomes/{income['id']}", headers=headers)
     assert resp.status_code == 204
+
+    # sin pagos reales: hard-delete total -> income y entries desaparecen
+    assert client.get("/incomes", headers=headers).json()["incomes"] == []
+    assert _entries_of(db_session, income["id"]) == []
+    # ya no existe: reactivate da 404
+    resp = client.post(f"/incomes/{income['id']}/reactivate", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_delete_soft_when_real_payment(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+    paid_entry_id = _add_real_payment(db_session, income["id"])
+
+    resp = client.delete(f"/incomes/{income['id']}", headers=headers)
+    assert resp.status_code == 204
+
+    # con pago real: soft-delete -> la entry con pago sobrevive
+    assert db_session.get(CashFlowEntry, paid_entry_id) is not None
+    # el income queda en la lista con is_deleted=True
     listed = client.get("/incomes", headers=headers).json()["incomes"]
     assert len(listed) == 1
     assert listed[0]["id"] == income["id"]
@@ -398,12 +452,14 @@ def test_reactivate_revives(client, db_session, seed_uy):
     _seed_refs(db_session)
     headers = _auth(client)
     income = _create_recurring(client, headers)
+    _add_real_payment(db_session, income["id"])  # para que el delete sea soft
     client.delete(f"/incomes/{income['id']}", headers=headers)
+
     resp = client.post(f"/incomes/{income['id']}/reactivate", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["is_deleted"] is False
-    listed = client.get("/incomes", headers=headers).json()["incomes"]
-    assert listed[0]["is_deleted"] is False
+    # re-materializa: vuelve a tener entries
+    assert len(_entries_of(db_session, income["id"])) >= 1
 
 
 def test_reactivate_not_deleted_conflict(client, db_session, seed_uy):
@@ -439,3 +495,28 @@ def test_reactivate_requires_auth(client, db_session, seed_uy):
     resp = client.post("/incomes/00000000-0000-0000-0000-000000000000/reactivate")
     assert resp.status_code == 401
     assert resp.json()["code"] == "unauthenticated"
+
+
+def test_create_materializes_entries(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+
+    entries = _entries_of(db_session, income["id"])
+    assert len(entries) >= 1
+    assert all(e.is_income is True for e in entries)
+    assert all(e.source_type == "ingreso" for e in entries)
+    assert all(e.amount == Decimal("45000.00") for e in entries)
+
+
+def test_patch_amount_rematerializes(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    headers = _auth(client)
+    income = _create_recurring(client, headers)
+
+    resp = client.patch(f"/incomes/{income['id']}", json={"amount": "50000.00"}, headers=headers)
+    assert resp.status_code == 200
+
+    entries = _entries_of(db_session, income["id"])
+    assert len(entries) >= 1
+    assert all(e.amount == Decimal("50000.00") for e in entries)

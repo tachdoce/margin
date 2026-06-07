@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -10,7 +10,10 @@ from app.models.currency import Currency
 from app.models.income import Income
 from app.models.income_type import IncomeType
 from app.models.user import User
+from app.models.cash_flow_entry import CashFlowEntry
+from app.models.cash_flow_payment import CashFlowPayment
 from app.schemas.income import IncomeCreate, IncomeUpdate
+from app.services.cash_flow.incomes import materialize_income
 
 MIN_DESCRIPTION_LENGTH = 8
 
@@ -88,6 +91,8 @@ def create_income(db: Session, user: User, payload: IncomeCreate) -> Income:
         shift_weekends=payload.shift_weekends or False,
     )
     db.add(income)
+    db.flush()
+    materialize_income(db, income.id)
     db.commit()
     db.refresh(income)
     return income
@@ -149,6 +154,8 @@ def update_income(db: Session, user: User, income_id: uuid.UUID, payload: Income
     if "shift_weekends" in fields:
         income.shift_weekends = payload.shift_weekends
 
+    db.flush()
+    materialize_income(db, income.id)
     db.commit()
     db.refresh(income)
     return income
@@ -163,7 +170,8 @@ def list_incomes(db: Session, user: User) -> list[Income]:
 
 
 def delete_income(db: Session, user: User, income_id: uuid.UUID) -> None:
-    """Soft-delete provisorio: setea deleted_at. (El DELETE híbrido real llega con el CashFlowEngine.)"""
+    """Borrado híbrido: hard-delete si el income no tiene pagos reales, soft-delete si los tiene.
+    No invoca al motor; orquesta el borrado de las cash_flow_entries con SQL directo."""
     income = db.execute(
         select(Income).where(
             Income.id == income_id,
@@ -173,7 +181,47 @@ def delete_income(db: Session, user: User, income_id: uuid.UUID) -> None:
     ).scalar_one_or_none()
     if income is None:
         raise AppError(ErrorCode.not_found)
-    income.deleted_at = datetime.now(timezone.utc)
+
+    real_payments = db.execute(
+        select(func.count())
+        .select_from(CashFlowPayment)
+        .join(CashFlowEntry, CashFlowPayment.cash_flow_entry_id == CashFlowEntry.id)
+        .where(
+            CashFlowEntry.source_type == "ingreso",
+            CashFlowEntry.source_id == income.id,
+            CashFlowPayment.plan_id.is_(None),
+        )
+    ).scalar_one()
+
+    if real_payments == 0:
+        # hard-delete total: todas las entries (sus planificados caen por cascade) + la fila
+        db.execute(
+            delete(CashFlowEntry).where(
+                CashFlowEntry.source_type == "ingreso",
+                CashFlowEntry.source_id == income.id,
+            )
+        )
+        db.delete(income)
+    else:
+        # soft-delete: borrar solo las entries del income SIN pago real; las con pago sobreviven
+        entries_with_real_payment = (
+            select(CashFlowPayment.cash_flow_entry_id)
+            .join(CashFlowEntry, CashFlowPayment.cash_flow_entry_id == CashFlowEntry.id)
+            .where(
+                CashFlowEntry.source_type == "ingreso",
+                CashFlowEntry.source_id == income.id,
+                CashFlowPayment.plan_id.is_(None),
+            )
+        )
+        db.execute(
+            delete(CashFlowEntry).where(
+                CashFlowEntry.source_type == "ingreso",
+                CashFlowEntry.source_id == income.id,
+                CashFlowEntry.id.not_in(entries_with_real_payment),
+            )
+        )
+        income.deleted_at = datetime.now(timezone.utc)
+
     db.commit()
 
 
@@ -189,6 +237,8 @@ def reactivate_income(db: Session, user: User, income_id: uuid.UUID) -> Income:
     if income.deleted_at is None:
         raise AppError(ErrorCode.income_not_deleted)
     income.deleted_at = None
+    db.flush()
+    materialize_income(db, income.id)
     db.commit()
     db.refresh(income)
     return income
