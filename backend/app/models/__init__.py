@@ -8,6 +8,12 @@ from app.models.institution import Institution  # noqa: F401
 from app.models.review_finding_code import ReviewFindingCode  # noqa: F401
 from app.models.credit_card_network import CreditCardNetwork  # noqa: F401
 from app.models.credit_card_item_type import CreditCardItemType  # noqa: F401
+from app.models.credit_card import CreditCard  # noqa: F401
+from app.models.credit_card_statement import CreditCardStatement  # noqa: F401
+from app.models.credit_card_statement_item import CreditCardStatementItem  # noqa: F401
+from app.models.credit_card_purchase import CreditCardPurchase  # noqa: F401
+from app.models.staging_credit_card import StagingCreditCard  # noqa: F401
+from app.models.staging_credit_card_item import StagingCreditCardItem  # noqa: F401
 from app.models.obligation_type import ObligationType  # noqa: F401
 from app.models.income_type import IncomeType  # noqa: F401
 from app.models.income import Income  # noqa: F401

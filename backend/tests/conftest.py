@@ -52,3 +52,25 @@ def seed_uy_currency(db_session, seed_uy):
         Currency(id=1, country_code="UY", name="Peso", is_legal_tender=True, allowed_in_credit_card=True)
     )
     db_session.flush()
+
+
+@pytest.fixture
+def seed_cc_refs(db_session, seed_uy_currency):
+    """UY + Peso (id=1) + institución, red y tipo de ítem (id=1) + un usuario. Devuelve el usuario."""
+    from app.models.credit_card_item_type import CreditCardItemType
+    from app.models.credit_card_network import CreditCardNetwork
+    from app.models.institution import Institution
+    from app.models.user import User
+
+    db_session.add_all(
+        [
+            Institution(id=1, country_code="UY", name="Scotiabank", visible=True),
+            CreditCardNetwork(id=1, country_code="UY", code="amex", name="Amex"),
+            CreditCardItemType(id=1, code="compra", name="Compra", description="x"),
+        ]
+    )
+    db_session.flush()
+    user = User(country_code="UY")
+    db_session.add(user)
+    db_session.flush()
+    return user
