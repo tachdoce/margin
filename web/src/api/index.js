@@ -65,6 +65,18 @@ export const api = {
   selectPlan(id) {
     return request('POST', `/plans/${id}/select`)
   },
+  listMovements(planId) {
+    return request('GET', `/plans/${planId}/movements`)
+  },
+  createMovement(planId, body) {
+    return request('POST', `/plans/${planId}/movements`, body)
+  },
+  updateMovement(planId, id, body) {
+    return request('PATCH', `/plans/${planId}/movements/${id}`, body)
+  },
+  deleteMovement(planId, id) {
+    return request('DELETE', `/plans/${planId}/movements/${id}`)
+  },
 }
 
 export function saveSession({ user, token }) {

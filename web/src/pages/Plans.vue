@@ -1,7 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+
+const router = useRouter()
 
 const plans = ref([])
 const catalogs = ref({ currencies: [] })
@@ -212,6 +215,13 @@ async function remove(plan) {
           <button class="ghost" @click="startEdit(plan)">Editar</button>
           <button class="ghost accent" :disabled="plan.id === activeId" @click="select(plan)">
             {{ plan.id === activeId ? 'Activo' : 'Seleccionar' }}
+          </button>
+          <button
+            v-if="!plan.is_default"
+            class="ghost"
+            @click="router.push(`/plans/${plan.id}/movements`)"
+          >
+            Movimientos
           </button>
           <button v-if="!plan.is_default" class="ghost danger" @click="remove(plan)">Borrar</button>
         </div>
