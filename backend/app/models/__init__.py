@@ -13,5 +13,6 @@ from app.models.income_type import IncomeType  # noqa: F401
 from app.models.income import Income  # noqa: F401
 from app.models.plan import Plan  # noqa: F401
 from app.models.plan_movement import PlanMovement  # noqa: F401
+from app.models.obligation import Obligation  # noqa: F401
 from app.models.cash_flow_entry import CashFlowEntry  # noqa: F401
 from app.models.cash_flow_payment import CashFlowPayment  # noqa: F401
