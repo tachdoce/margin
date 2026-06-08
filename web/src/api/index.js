@@ -89,6 +89,21 @@ export const api = {
   deleteExpense(id) {
     return request('DELETE', `/obligations/${id}`)
   },
+  listDebts() {
+    return request('GET', '/debts')
+  },
+  createDebt(body) {
+    return request('POST', '/debts', body)
+  },
+  updateDebt(id, body) {
+    return request('PATCH', `/debts/${id}`, body)
+  },
+  deleteDebt(id) {
+    return request('DELETE', `/obligations/${id}`)
+  },
+  acknowledgeObligation(id) {
+    return request('POST', `/obligations/${id}/acknowledge`)
+  },
 }
 
 export function saveSession({ user, token }) {
