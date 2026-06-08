@@ -29,6 +29,10 @@ class ErrorCode(Enum):
     goal_invalid = (422, "El objetivo no es válido.")
     empty_patch = (422, "No hay cambios para aplicar.")
     default_plan_undeletable = (409, "El plan actual no se puede borrar.")
+    default_plan_no_movements = (409, "El plan actual no admite movimientos. Creá un plan nuevo para simular escenarios.")
+    kind_invalid = (422, "Tipo de movimiento no válido.")
+    installments_invalid = (422, "Las cuotas no son válidas.")
+    movement_fields_invalid = (422, "Los datos del movimiento no coinciden con su tipo.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
