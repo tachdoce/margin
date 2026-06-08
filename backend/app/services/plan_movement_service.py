@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.models.cash_flow_entry import CashFlowEntry
-from app.models.currency import Currency
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
 from app.schemas.plan_movement import PlanMovementCreate, PlanMovementUpdate
 from app.services.cash_flow.plan_movements import materialize_plan_movement
+from app.services.scoping import require_user_currency
 
 MOVEMENT_KINDS = ("ingreso", "deuda_informal", "prestamo")
 INCOME_FIELD = ("income_duration_months",)
@@ -36,12 +36,6 @@ def _get_movement(db: Session, plan_id: uuid.UUID, movement_id: uuid.UUID) -> Pl
     if movement is None:
         raise AppError(ErrorCode.not_found)
     return movement
-
-
-def _validate_currency(db: Session, user: User, currency_id: int | None) -> None:
-    currency = db.get(Currency, currency_id) if currency_id is not None else None
-    if currency is None or currency.country_code != user.country_code:
-        raise AppError(ErrorCode.currency_not_available, field="currency_id")
 
 
 def _check_foreign_fields(kind: str, present: dict) -> None:
@@ -75,7 +69,7 @@ def create_movement(
         raise AppError(ErrorCode.default_plan_no_movements)
     if payload.kind not in MOVEMENT_KINDS:
         raise AppError(ErrorCode.kind_invalid, field="kind")
-    _validate_currency(db, user, payload.currency_id)
+    require_user_currency(db, user, payload.currency_id)
     if payload.principal_amount is None or payload.principal_amount <= 0:
         raise AppError(ErrorCode.amount_invalid, field="principal_amount")
 
@@ -139,7 +133,7 @@ def update_movement(
     _check_foreign_fields(movement.kind, present)
 
     if "currency_id" in fields:
-        _validate_currency(db, user, payload.currency_id)
+        require_user_currency(db, user, payload.currency_id)
     if "principal_amount" in fields and (payload.principal_amount is None or payload.principal_amount <= 0):
         raise AppError(ErrorCode.amount_invalid, field="principal_amount")
     if "installment_amount" in fields and payload.installment_amount is not None and payload.installment_amount <= 0:

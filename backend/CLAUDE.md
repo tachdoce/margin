@@ -29,3 +29,6 @@ FastAPI + SQLAlchemy 2.0 + Alembic + Postgres 16. Python 3.13.
 - Pydantic serializa `Decimal` como string en JSON (preserva precisión).
 - Errores: lanzar `AppError(ErrorCode.x)` desde el servicio; nunca `HTTPException`. El formato lo rinden los handlers.
 - Endpoints: router finito → servicio. El router no valida reglas de negocio.
+- Scoping por país: una referencia que debe ser del país del usuario (ej. `currency_id`) se valida con
+  `app/services/scoping.py` (`require_user_currency`, o `require_country_scoped` para un modelo nuevo con
+  columna `country_code`). No duplicar la regla en cada servicio.

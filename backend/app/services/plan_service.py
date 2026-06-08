@@ -8,23 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError, ErrorCode
 from app.models.cash_flow_entry import CashFlowEntry
 from app.models.cash_flow_payment import CashFlowPayment
-from app.models.currency import Currency
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
 from app.schemas.plan import PlanCreate, PlanUpdate
+from app.services.scoping import legal_tender_currency
 
 DEFAULT_PLAN_NAME = "Mi plan actual"
 GOAL_KINDS = ("ahorro_total",)
-
-
-def _legal_tender_currency(db: Session, user: User) -> Currency:
-    return db.execute(
-        select(Currency).where(
-            Currency.country_code == user.country_code,
-            Currency.is_legal_tender.is_(True),
-        )
-    ).scalars().first()
 
 
 def _validate_goal(goal_kind: str | None, goal_amount: Decimal | None) -> None:
@@ -40,7 +31,7 @@ def _validate_goal(goal_kind: str | None, goal_amount: Decimal | None) -> None:
 def create_default_plan(db: Session, user: User) -> Plan:
     """Crea el plan default del usuario (representa su realidad actual). No hace commit:
     la transacción la controla el caller (register_user)."""
-    currency = _legal_tender_currency(db, user)
+    currency = legal_tender_currency(db, user)
     plan = Plan(
         user_id=user.id,
         name=DEFAULT_PLAN_NAME,
@@ -65,7 +56,7 @@ def create_plan(db: Session, user: User, payload: PlanCreate) -> Plan:
         raise AppError(ErrorCode.dial_amount_invalid, field="dial_amount")
     _validate_goal(payload.goal_kind, payload.goal_amount)
 
-    currency = _legal_tender_currency(db, user)
+    currency = legal_tender_currency(db, user)
     has_goal = payload.goal_kind is not None
     selected_at = datetime.now(timezone.utc) if payload.select_on_create else user.created_at
 
@@ -125,7 +116,7 @@ def update_plan(db: Session, user: User, plan_id: uuid.UUID, payload: PlanUpdate
         plan.goal_kind = payload.goal_kind
     if "goal_amount" in fields:
         plan.goal_amount = payload.goal_amount
-    plan.goal_currency_id = _legal_tender_currency(db, user).id if final_goal_kind is not None else None
+    plan.goal_currency_id = legal_tender_currency(db, user).id if final_goal_kind is not None else None
 
     db.commit()
     db.refresh(plan)

@@ -6,7 +6,6 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.currency import Currency
 from app.models.income import Income
 from app.models.income_type import IncomeType
 from app.models.user import User
@@ -14,6 +13,7 @@ from app.models.cash_flow_entry import CashFlowEntry
 from app.models.cash_flow_payment import CashFlowPayment
 from app.schemas.income import IncomeCreate, IncomeUpdate
 from app.services.cash_flow.incomes import materialize_income
+from app.services.scoping import require_user_currency
 
 MIN_DESCRIPTION_LENGTH = 8
 
@@ -22,12 +22,6 @@ def _validate_income_type(db: Session, income_type_id: int | None) -> None:
     income_type = db.get(IncomeType, income_type_id) if income_type_id is not None else None
     if income_type is None or not income_type.visible:
         raise AppError(ErrorCode.income_type_invalid, field="income_type_id")
-
-
-def _validate_currency(db: Session, user: User, currency_id: int | None) -> None:
-    currency = db.get(Currency, currency_id) if currency_id is not None else None
-    if currency is None or currency.country_code != user.country_code:
-        raise AppError(ErrorCode.currency_not_available, field="currency_id")
 
 
 def _validate_amount(amount: Decimal | None) -> None:
@@ -70,7 +64,7 @@ def _validate_form(
 
 def create_income(db: Session, user: User, payload: IncomeCreate) -> Income:
     _validate_income_type(db, payload.income_type_id)
-    _validate_currency(db, user, payload.currency_id)
+    require_user_currency(db, user, payload.currency_id)
     _validate_amount(payload.amount)
     description = _validate_description(payload.description)
     _validate_payment_day(payload.payment_day)
@@ -120,7 +114,7 @@ def update_income(db: Session, user: User, income_id: uuid.UUID, payload: Income
     if "income_type_id" in fields:
         _validate_income_type(db, payload.income_type_id)
     if "currency_id" in fields:
-        _validate_currency(db, user, payload.currency_id)
+        require_user_currency(db, user, payload.currency_id)
     if "amount" in fields:
         _validate_amount(payload.amount)
     new_description = None
