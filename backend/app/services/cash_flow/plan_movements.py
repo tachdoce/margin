@@ -1,6 +1,5 @@
 import uuid
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +10,7 @@ from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
 from app.services.cash_flow.date_utils import compute_event_date
+from app.services.cash_flow.rates import effective_rate
 
 HORIZON = date(2027, 12, 31)
 
@@ -27,14 +27,6 @@ def _monthly_dates(start: date, count: int | None, horizon: date, *, shift: bool
         yield compute_event_date(y, m, day, shift)
         y, m = _next_month(y, m)
         i += 1
-
-
-def _effective_rate(rate: Decimal | None, rates_add_vat: bool, vat_rate: Decimal) -> Decimal | None:
-    if rate is None:
-        return None
-    if rates_add_vat:
-        rate = rate * (Decimal(1) + vat_rate / Decimal(100))
-    return rate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _target(source_type, event_date, is_income, amount, financing_rate=None, overdue_rate=None):
@@ -74,8 +66,8 @@ def _target_entries(db: Session, movement: PlanMovement, user: User, today: date
             targets.append(_target("plan_movimiento_entrada", ed, True, movement.principal_amount))
         # cuotas (N filas, corren por finde, con tasa efectiva)
         vat_rate = db.get(Country, user.country_code).vat_rate
-        fin = _effective_rate(movement.financing_rate, movement.rates_add_vat, vat_rate)
-        over = _effective_rate(movement.overdue_rate, movement.rates_add_vat, vat_rate)
+        fin = effective_rate(movement.financing_rate, movement.rates_add_vat, vat_rate)
+        over = effective_rate(movement.overdue_rate, movement.rates_add_vat, vat_rate)
         for ed in _monthly_dates(movement.installment_start_date, movement.total_installments, horizon, shift=True):
             if today <= ed <= horizon:
                 targets.append(

@@ -9,46 +9,21 @@ from app.models.cash_flow_payment import CashFlowPayment
 from app.models.institution import Institution
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 from app.schemas.debt import DebtCreate, DebtUpdate
 from app.services.cash_flow.debts import materialize_debt
 from app.services.cash_flow.open_debts import materialize_open_debt
+from app.services.obligation_common import (
+    validate_amount,
+    validate_description,
+    validate_due_day,
+    validate_priority,
+)
 from app.services.review.obligations import review_obligation
 from app.services.scoping import require_user_currency
 
-MIN_DESCRIPTION_LENGTH = 8
-SYSTEM_PRIORITY_LEVEL = 1
 DEBT_KINDS = ("deuda", "deuda_abierta")
 SCHEDULE_FIELDS = ("first_due_date", "total_installments", "due_day")
-
-
-# --- validadores comunes (replicados de expense_service; extracción diferida a post-6c) ---
-
-def _validate_priority(db: Session, priority_level: int | None) -> None:
-    if (
-        priority_level is None
-        or priority_level == SYSTEM_PRIORITY_LEVEL
-        or db.get(PriorityLevel, priority_level) is None
-    ):
-        raise AppError(ErrorCode.priority_level_invalid, field="priority_level")
-
-
-def _validate_description(description: str | None) -> str:
-    cleaned = (description or "").strip()
-    if len(cleaned) < MIN_DESCRIPTION_LENGTH:
-        raise AppError(ErrorCode.description_invalid, field="description")
-    return cleaned
-
-
-def _validate_amount(amount) -> None:
-    if amount is None or amount <= 0:
-        raise AppError(ErrorCode.amount_invalid, field="amount")
-
-
-def _validate_due_day(due_day: int | None) -> None:
-    if due_day is not None and not (1 <= due_day <= 31):
-        raise AppError(ErrorCode.due_day_invalid, field="due_day")
 
 
 # --- validadores específicos de deudas ---
@@ -120,14 +95,14 @@ def create_debt(db: Session, user: User, payload: DebtCreate) -> Obligation:
     ot = _require_debt_type(db, payload.obligation_type_id)
     kind = ot.obligation_kind
     require_user_currency(db, user, payload.currency_id)
-    _validate_priority(db, payload.priority_level)
-    description = _validate_description(payload.description)
-    _validate_amount(payload.amount)
+    validate_priority(db, payload.priority_level)
+    description = validate_description(payload.description)
+    validate_amount(payload.amount)
 
     if kind == "deuda":
         if payload.institution_id is not None:
             _validate_institution(db, user, payload.institution_id)
-        _validate_due_day(payload.due_day)
+        validate_due_day(payload.due_day)
         _validate_rate(payload.financing_rate, "financing_rate")
         _validate_rate(payload.overdue_rate, "overdue_rate")
         _validate_deuda_form(payload.due_day, payload.total_installments, payload.first_due_date)
@@ -212,15 +187,15 @@ def update_debt(db: Session, user: User, obligation_id: uuid.UUID, payload: Debt
     if "currency_id" in fields:
         require_user_currency(db, user, payload.currency_id)
     if "priority_level" in fields:
-        _validate_priority(db, payload.priority_level)
+        validate_priority(db, payload.priority_level)
     if "description" in fields:
-        _validate_description(payload.description)
+        validate_description(payload.description)
     if "amount" in fields:
-        _validate_amount(payload.amount)
+        validate_amount(payload.amount)
     if "institution_id" in fields and payload.institution_id is not None:
         _validate_institution(db, user, payload.institution_id)
     if "due_day" in fields:
-        _validate_due_day(payload.due_day)
+        validate_due_day(payload.due_day)
     if "financing_rate" in fields:
         _validate_rate(payload.financing_rate, "financing_rate")
     if "overdue_rate" in fields:

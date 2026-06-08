@@ -1,6 +1,5 @@
 import uuid
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,16 +10,9 @@ from app.models.country import Country
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.services.cash_flow.date_utils import compute_event_date
+from app.services.cash_flow.rates import effective_rate
 
 HORIZON = date(2027, 12, 31)
-
-
-def _effective_rate(rate: Decimal | None, rates_add_vat: bool, vat_rate: Decimal | None) -> Decimal | None:
-    if rate is None:
-        return None
-    if rates_add_vat:
-        rate = rate * (Decimal(1) + vat_rate / Decimal(100))
-    return rate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> list[date]:
@@ -75,8 +67,8 @@ def materialize_debt(
         vat_rate = db.get(Country, user.country_code).vat_rate
     else:
         vat_rate = None
-    fin_eff = _effective_rate(obligation.financing_rate, obligation.rates_add_vat, vat_rate)
-    over_eff = _effective_rate(obligation.overdue_rate, obligation.rates_add_vat, vat_rate)
+    fin_eff = effective_rate(obligation.financing_rate, obligation.rates_add_vat, vat_rate)
+    over_eff = effective_rate(obligation.overdue_rate, obligation.rates_add_vat, vat_rate)
 
     existing = list(
         db.execute(
