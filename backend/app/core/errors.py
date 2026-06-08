@@ -33,6 +33,12 @@ class ErrorCode(Enum):
     kind_invalid = (422, "Tipo de movimiento no válido.")
     installments_invalid = (422, "Las cuotas no son válidas.")
     movement_fields_invalid = (422, "Los datos del movimiento no coinciden con su tipo.")
+    expense_type_invalid = (422, "Tipo de gasto no válido.")
+    priority_level_invalid = (422, "Nivel de prioridad no válido.")
+    due_day_invalid = (422, "El día de vencimiento debe estar entre 1 y 31.")
+    one_time_expense_inconsistent = (422, "Un gasto con fecha única debe ser no recurrente y sin día de vencimiento.")
+    expense_recurring_requires_due_day = (422, "Un gasto recurrente necesita un día de vencimiento.")
+    one_time_date_in_past = (422, "La fecha del gasto no puede ser anterior a hoy.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

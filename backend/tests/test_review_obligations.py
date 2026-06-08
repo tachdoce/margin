@@ -130,3 +130,13 @@ def test_review_findings_es_json_lista(db_session, user):
     parsed = json.loads(o.review_findings)
     assert isinstance(parsed, list)
     assert all(isinstance(c, str) for c in parsed)
+
+
+def test_is_closed_short_circuit(db_session, user):
+    # tasas que normalmente dispararían findings, pero cerrada → short-circuit
+    o = _deuda(db_session, user, financing_rate=Decimal("200.00"), overdue_rate=Decimal("10.00"),
+               is_closed=True)
+    review_obligation(db_session, o.id)
+    db_session.refresh(o)
+    assert o.review_findings == "[]"
+    assert o.is_ready is True

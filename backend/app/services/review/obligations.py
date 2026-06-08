@@ -33,6 +33,14 @@ def review_obligation(db: Session, obligation_id: uuid.UUID) -> None:
     if obligation is None:
         return
 
+    if obligation.is_closed:
+        # una obligación cerrada está resuelta: sin findings, lista. No se corren las reglas.
+        obligation.reviewed_at = datetime.now(timezone.utc)
+        obligation.review_findings = "[]"
+        obligation.is_ready = True
+        db.flush()
+        return
+
     findings = _findings(obligation)
     obligation.reviewed_at = datetime.now(timezone.utc)
     obligation.review_findings = json.dumps(findings)
