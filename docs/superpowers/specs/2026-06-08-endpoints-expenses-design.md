@@ -20,6 +20,8 @@
 - **Servicio** `app/services/expense_service.py`: `create_expense`, `list_expenses`, `update_expense` + helpers.
 - **Schemas** `app/schemas/expense.py`: `ExpenseCreate`, `ExpenseUpdate`, `ExpenseOut`.
 - **Error codes nuevos** en `app/core/errors.py`.
+- **Amend a `app/services/review/obligations.py`** (#5): agregar el short-circuit `is_closed` a
+  `review_obligation` (+ su test). Pequeño, pero necesario para la orquestación uniforme (§4).
 
 **Fuera de alcance:** endpoints de debts (6b), DELETE + acknowledge (6c), vista web.
 
@@ -59,20 +61,23 @@
 
 ```
 validar → insert/update en obligations → flush
-        → si estado final is_closed=true: review_findings='[]', is_ready=true (NO corre el reviewer)
-          si no:                          ReviewEngine.review_obligation(db, id)
+        → ReviewEngine.review_obligation(db, id)         (maneja internamente el caso is_closed)
         → CashFlowEngine.materialize_expense(db, id)     (siempre; el motor decide por is_ready)
         → commit → refresh → ExpenseOut
 ```
-Si el reviewer o el motor lanzan excepción → rollback total. El endpoint **no** evalúa `is_ready`.
+Orquestación **uniforme**: el endpoint **siempre** llama al reviewer y siempre al motor, sin branchear en
+`is_closed` ni evaluar `is_ready`. Si el reviewer o el motor lanzan excepción → rollback total.
 `MIN_DESCRIPTION_LENGTH = 8`. `user_id` siempre del token.
 
-**Cierre = resolución (importante).** Cuando una obligación queda `is_closed = true`, el backend **fuerza
-`review_findings = '[]'` e `is_ready = true`** en vez de correr el reviewer. Esto realiza concretamente "una
-obligación cerrada no admite findings" y, sobre todo, deja el gate en `true` para que el motor **sí limpie
-las entries futuras** (objetivo vacío). Si se dejara `is_ready` en su valor previo (`false` por findings
-pendientes), el motor haría no-op y las futuras quedarían colgando — el bug que esto evita. (En gastos los
-findings nunca ocurren —no hay tasas—, pero la orquestación es la misma que en debts, donde sí importa.)
+**Cierre = resolución (lo dueña el reviewer).** `review_obligation` hace **short-circuit** cuando
+`obligation.is_closed` es `true`: setea `review_findings = '[]'` e `is_ready = true` (y `reviewed_at = now`)
+**sin correr las reglas**. Esto realiza "una obligación cerrada no admite findings" y deja el gate en `true`
+para que el motor **sí limpie las entries futuras** (objetivo vacío). Si quedara `is_ready = false` por
+findings previos, el motor haría no-op y las futuras quedarían colgando — el bug que esto evita. La
+responsabilidad de derivar `is_ready` del estado de la fila vive **solo en el reviewer**; el endpoint no
+replica la regla "cerrada ⇒ ready". (Esto suma un amend chico a `review_obligation` —#5— + su test, incluido
+en este slice. En gastos los findings nunca ocurren —no hay tasas—, pero la orquestación y el reviewer son
+los mismos que en debts, donde sí importa.)
 
 ---
 
@@ -122,13 +127,11 @@ Solo lectura. `SELECT` de `obligations` JOIN `obligation_types` WHERE `user_id` 
    **solo si difiere del guardado** (`one_time_date_in_past`).
 
 **Update:** solo columnas presentes; `user_id`/`id`/`created_at`/`origin_obligation_id`/cuotas/tasas no se
-tocan; `updated_at` natural. **Ciclo según estado final:**
-- `is_closed = false` → corre `ReviewEngine.review_obligation` (popula `review_findings`/`is_ready`; resetea
-  `user_acknowledged_at` si hay findings).
-- `is_closed = true` → **no** corre el reviewer; el backend setea `review_findings = '[]'` e `is_ready =
-  true` (cierre = resolución; deja el gate listo para que el motor limpie las futuras).
-
-**Motor:** siempre (`materialize_expense`). Orquestación §4.
+tocan; `updated_at` natural. **Ciclo:** el endpoint siempre llama a `review_obligation` (uniforme); el
+reviewer decide según el estado final — si `is_closed = false` corre las reglas (popula
+`review_findings`/`is_ready`, resetea `user_acknowledged_at` si hay findings); si `is_closed = true` hace
+short-circuit (`review_findings='[]'`, `is_ready=true`, sin reglas). **Motor:** siempre
+(`materialize_expense`). Orquestación §4.
 
 ---
 
@@ -138,10 +141,13 @@ tocan; `updated_at` natural. **Ciclo según estado final:**
   foco (mismo criterio que `plan_movements`).
 - **`review_findings` como array en el Out:** la columna es text JSON; el contrato expone un array. Se
   parsea en `from_model`.
-- **Cierre = resolución (PATCH con `is_closed=true`):** no corre el reviewer y se fuerza
-  `review_findings='[]'` + `is_ready=true`. Una obligación cerrada no admite findings (Notion), y dejar el
-  gate en `true` es lo que permite al motor limpiar las entries futuras — si quedara `is_ready=false` por
-  findings previos, el motor haría no-op y las futuras quedarían huérfanas. Se revisa de nuevo si se reabre.
+- **Cierre = resolución, lo dueña el reviewer:** `review_obligation` hace short-circuit si `is_closed`
+  (`review_findings='[]'`, `is_ready=true`, sin reglas). Decisión de diseño (vs. setearlo en el endpoint):
+  `is_ready` es propiedad del ciclo de revisión, así que su derivación a partir del estado de la fila vive en
+  un solo lugar (el reviewer); el endpoint queda uniforme y cualquier ruta que cierre la obligación (PATCH
+  hoy, la acción de cierre+creación de deuda_abierta mañana) obtiene el estado correcto sin duplicar la
+  regla. Dejar el gate en `true` es lo que permite al motor limpiar las futuras; si quedara `false` por
+  findings previos, el motor haría no-op y quedarían huérfanas. Se revisa de nuevo si se reabre.
 - **PATCH vacío permitido:** el spec no define `empty_patch` para expenses; un patch vacío es un no-op que
   re-corre reviewer/motor (decisión confirmada en el brainstorming).
 - **`user_id` del token; `institution_id` ignorado:** seguridad e invariante de gasto sin institución.
@@ -170,11 +176,16 @@ caso de kind inválido), `priority_levels` (incluido el nivel 1) y currency. Con
 > El test del cierre que **limpia futuras estando con findings previos** vive naturalmente en 6b (debts),
 > donde los findings sí pueden ocurrir; acá se verifica el estado terminal del cierre (`[]` + `is_ready`).
 
+- **Reviewer (`tests/test_review_obligations.py`, amend):** `review_obligation` sobre una obligación
+  `is_closed=true` con tasas que normalmente dispararían findings → short-circuit: `review_findings='[]'`,
+  `is_ready=true`, sin importar las reglas. (Este test acompaña el amend del reviewer.)
+
 Regresión `pytest -q` verde.
 
 ---
 
 ## 10. Plan de implementación (orientativo)
 
-Un slice (`feat/endpoints-expenses`), 3 tasks: (1) schemas + error codes + `POST` + `GET` (+ router
-registrado), (2) `PATCH`, (3) suite completa. TDD por task.
+Un slice (`feat/endpoints-expenses`), 4 tasks: (1) amend del reviewer (short-circuit `is_closed` en
+`review_obligation` + test), (2) schemas + error codes + `POST` + `GET` (+ router registrado), (3) `PATCH`,
+(4) suite completa. TDD por task.
