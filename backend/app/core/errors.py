@@ -47,6 +47,9 @@ class ErrorCode(Enum):
     open_debt_inconsistent = (422, "Una deuda abierta no admite fechas, cuotas ni tasas.")
     debt_schedule_requires_due_day = (422, "Una deuda en cuotas necesita un día de vencimiento.")
     debt_schedule_locked = (409, "No se puede cambiar el cronograma de una deuda con pagos registrados.")
+    obligation_has_children = (409, "Borrá primero las obligaciones derivadas de esta.")
+    obligation_has_payments = (409, "No se puede borrar una obligación con pagos confirmados.")
+    obligation_has_no_findings = (409, "Esta obligación no tiene observaciones para reconocer.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
