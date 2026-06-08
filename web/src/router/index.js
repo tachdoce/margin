@@ -5,6 +5,7 @@ import Login from '../pages/Login.vue'
 import Register from '../pages/Register.vue'
 import Dashboard from '../pages/Dashboard.vue'
 import Incomes from '../pages/Incomes.vue'
+import Plans from '../pages/Plans.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,7 @@ const router = createRouter({
     { path: '/register', component: Register, meta: { public: true } },
     { path: '/dashboard', component: Dashboard },
     { path: '/incomes', component: Incomes },
+    { path: '/plans', component: Plans },
   ],
 })
 

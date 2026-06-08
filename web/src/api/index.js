@@ -50,6 +50,21 @@ export const api = {
   reactivateIncome(id) {
     return request('POST', `/incomes/${id}/reactivate`)
   },
+  listPlans() {
+    return request('GET', '/plans')
+  },
+  createPlan(body) {
+    return request('POST', '/plans', body)
+  },
+  updatePlan(id, body) {
+    return request('PATCH', `/plans/${id}`, body)
+  },
+  deletePlan(id) {
+    return request('DELETE', `/plans/${id}`)
+  },
+  selectPlan(id) {
+    return request('POST', `/plans/${id}/select`)
+  },
 }
 
 export function saveSession({ user, token }) {
