@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,12 +9,21 @@ from app.models.cash_flow_entry import CashFlowEntry
 from app.models.cash_flow_payment import CashFlowPayment
 from app.models.country import Country
 from app.models.credit_card import CreditCard
+from app.models.credit_card_item_type import CreditCardItemType
 from app.models.credit_card_statement import CreditCardStatement
+from app.models.credit_card_statement_item import CreditCardStatementItem
 from app.models.user import User
+from app.services.cash_flow.date_utils import compute_event_date
 from app.services.cash_flow.rates import effective_rate
 from app.services.scoping import credit_card_usd_currency, legal_tender_currency
 
 HORIZON = date(2027, 12, 31)
+
+
+def _add_months(year: int, month: int, k: int) -> tuple[int, int]:
+    """(year, month) + k meses."""
+    idx = (month - 1) + k
+    return year + idx // 12, idx % 12 + 1
 
 
 def _latest_statement(db: Session, credit_card_id: uuid.UUID) -> CreditCardStatement | None:
@@ -24,6 +34,46 @@ def _latest_statement(db: Session, credit_card_id: uuid.UUID) -> CreditCardState
         .order_by(CreditCardStatement.issue_year.desc(), CreditCardStatement.issue_month.desc())
         .limit(1)
     ).scalar_one_or_none()
+
+
+def _projection_sums(
+    db: Session, statement: CreditCardStatement, horizon: date
+) -> dict[tuple[int, int, int], Decimal]:
+    """{(year, month, currency_id): monto} de cuotas pendientes + suscripciones de los ítems del
+    resumen, de M+1 (M = mes del closing_date) al horizonte, agrupadas por mes y moneda."""
+    sub_type_id = db.execute(
+        select(CreditCardItemType.id).where(CreditCardItemType.code == "suscripcion")
+    ).scalar_one_or_none()
+    items = db.execute(
+        select(CreditCardStatementItem).where(
+            CreditCardStatementItem.credit_card_statement_id == statement.id
+        )
+    ).scalars()
+
+    base_y, base_m = statement.closing_date.year, statement.closing_date.month
+    horizon_key = (horizon.year, horizon.month)
+    sums: dict[tuple[int, int, int], Decimal] = {}
+
+    def add(k: int, currency_id: int, amount: Decimal) -> bool:
+        y, m = _add_months(base_y, base_m, k)
+        if (y, m) > horizon_key:
+            return False
+        key = (y, m, currency_id)
+        sums[key] = sums.get(key, Decimal("0")) + amount
+        return True
+
+    for item in items:
+        if item.current_installment is not None and item.total_installments is not None:
+            remaining = item.total_installments - item.current_installment
+            for k in range(1, remaining + 1):
+                if not add(k, item.currency_id, item.amount):
+                    break
+        elif sub_type_id is not None and item.item_type_id == sub_type_id:
+            k = 1
+            while add(k, item.currency_id, item.amount):
+                k += 1
+
+    return sums
 
 
 def _reconcile(
@@ -131,6 +181,19 @@ def materialize_credit_card(
                     overdue_rate=over,
                     minimum_payment=minimum,
                 )
+
+    # --- Responsabilidad 2: proyección de meses siguientes ---
+    if statement is not None:
+        rate_pair = {local_id: (fin_local, over_local), usd_id: (fin_usd, over_usd)}
+        for (y, m, cid), amount in _projection_sums(db, statement, horizon).items():
+            fin, over = rate_pair.get(cid, (None, None))
+            targets[(y, m, cid)] = dict(
+                event_date=compute_event_date(y, m, card.closing_day, False),
+                amount=amount,
+                financing_rate=fin,
+                overdue_rate=over,
+                minimum_payment=None,
+            )
 
     _reconcile(db, card, targets, today)
     db.flush()
