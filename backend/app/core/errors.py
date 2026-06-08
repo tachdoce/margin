@@ -24,6 +24,11 @@ class ErrorCode(Enum):
     income_form_inconsistent = (422, "Las columnas no corresponden a la forma del ingreso (recurrente o duración fija).")
     field_not_nullable = (422, "Ese campo no puede ser nulo.")
     income_not_deleted = (409, "Este ingreso no está borrado.")
+    name_required = (422, "El plan necesita un nombre.")
+    dial_amount_invalid = (422, "El monto del dial debe ser mayor o igual a 0.")
+    goal_invalid = (422, "El objetivo no es válido.")
+    empty_patch = (422, "No hay cambios para aplicar.")
+    default_plan_undeletable = (409, "El plan actual no se puede borrar.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
