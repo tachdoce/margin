@@ -46,3 +46,15 @@ def legal_tender_currency(db: Session, user: User) -> Currency:
             Currency.is_legal_tender.is_(True),
         )
     ).scalars().first()
+
+
+def credit_card_usd_currency(db: Session, user: User) -> Currency:
+    """Moneda USD del país del usuario para tarjetas: allowed_in_credit_card y no de curso legal.
+    Se deriva del catálogo (no del body)."""
+    return db.execute(
+        select(Currency).where(
+            Currency.country_code == user.country_code,
+            Currency.allowed_in_credit_card.is_(True),
+            Currency.is_legal_tender.is_(False),
+        )
+    ).scalars().first()
