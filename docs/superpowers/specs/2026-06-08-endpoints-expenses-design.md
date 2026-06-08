@@ -57,6 +57,55 @@
 
 ---
 
+## 3.1 Amend a `review_obligation` (#5)
+
+El cambio concreto al reviewer: agregar un **short-circuit por `is_closed` al principio**, antes de evaluar
+las reglas.
+
+**Hoy** (`app/services/review/obligations.py`):
+```python
+def review_obligation(db, obligation_id):
+    obligation = db.execute(select(Obligation).where(...).with_for_update()).scalar_one_or_none()
+    if obligation is None:
+        return
+    findings = _findings(obligation)        # corre las reglas
+    obligation.reviewed_at = datetime.now(timezone.utc)
+    obligation.review_findings = json.dumps(findings)
+    obligation.is_ready = len(findings) == 0
+    if findings:
+        obligation.user_acknowledged_at = None
+    db.flush()
+```
+
+**Queda** (se inserta el bloque marcado):
+```python
+def review_obligation(db, obligation_id):
+    obligation = db.execute(select(Obligation).where(...).with_for_update()).scalar_one_or_none()
+    if obligation is None:
+        return
+
+    # NUEVO: una obligación cerrada está resuelta — sin findings, lista. No se corren las reglas.
+    if obligation.is_closed:
+        obligation.reviewed_at = datetime.now(timezone.utc)
+        obligation.review_findings = "[]"
+        obligation.is_ready = True
+        db.flush()
+        return
+
+    findings = _findings(obligation)        # corre las reglas (sin cambios)
+    obligation.reviewed_at = datetime.now(timezone.utc)
+    obligation.review_findings = json.dumps(findings)
+    obligation.is_ready = len(findings) == 0
+    if findings:
+        obligation.user_acknowledged_at = None
+    db.flush()
+```
+
+No se toca `user_acknowledged_at` en el caso cerrado (findings vacío ⇒ no se resetea, igual que cuando las
+reglas no encuentran nada). El test que acompaña el cambio está en §9.
+
+---
+
 ## 4. Orquestación común (POST y PATCH, 1 transacción)
 
 ```
