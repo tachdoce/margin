@@ -39,6 +39,14 @@ class ErrorCode(Enum):
     one_time_expense_inconsistent = (422, "Un gasto con fecha única debe ser no recurrente y sin día de vencimiento.")
     expense_recurring_requires_due_day = (422, "Un gasto recurrente necesita un día de vencimiento.")
     one_time_date_in_past = (422, "La fecha del gasto no puede ser anterior a hoy.")
+    debt_type_invalid = (422, "Tipo de deuda no válido.")
+    institution_invalid = (422, "Institución no válida.")
+    rates_negative = (422, "Las tasas no pueden ser negativas.")
+    one_time_debt_inconsistent = (422, "Una deuda de un pago no admite día de vencimiento ni cuotas.")
+    debt_requires_schedule_or_date = (422, "Una deuda necesita un cronograma o una fecha de pago.")
+    open_debt_inconsistent = (422, "Una deuda abierta no admite fechas, cuotas ni tasas.")
+    debt_schedule_requires_due_day = (422, "Una deuda en cuotas necesita un día de vencimiento.")
+    debt_schedule_locked = (409, "No se puede cambiar el cronograma de una deuda con pagos registrados.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
