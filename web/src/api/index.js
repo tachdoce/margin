@@ -77,6 +77,18 @@ export const api = {
   deleteMovement(planId, id) {
     return request('DELETE', `/plans/${planId}/movements/${id}`)
   },
+  listExpenses() {
+    return request('GET', '/expenses')
+  },
+  createExpense(body) {
+    return request('POST', '/expenses', body)
+  },
+  updateExpense(id, body) {
+    return request('PATCH', `/expenses/${id}`, body)
+  },
+  deleteExpense(id) {
+    return request('DELETE', `/obligations/${id}`)
+  },
 }
 
 export function saveSession({ user, token }) {
