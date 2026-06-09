@@ -55,6 +55,11 @@ class ErrorCode(Enum):
     item_type_invalid = (422, "Tipo de ítem no válido.")
     item_incomplete = (422, "El ítem quedaría incompleto.")
     statement_has_no_findings = (409, "El resumen no tiene observaciones para reconocer.")
+    statement_not_ready = (409, "El resumen tiene observaciones sin resolver.")
+    items_incomplete = (409, "Hay ítems del resumen sin completar.")
+    rates_required_new_card = (409, "Para dar de alta una tarjeta nueva, completá las tasas y el dato de IVA.")
+    statement_period_exists = (409, "Ya cargaste un resumen de ese mes para esta tarjeta.")
+    statement_period_not_after_last = (409, "Tenés que cargar el resumen siguiente al último que ya cargaste.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

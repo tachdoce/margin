@@ -174,3 +174,9 @@ class StagingItemUpdate(BaseModel):
     item_type_id: int | None = None
     current_installment: int | None = None
     total_installments: int | None = None
+
+
+class PromoteResult(BaseModel):
+    credit_card_id: uuid.UUID
+    is_ready: bool
+    review_findings: list[str]

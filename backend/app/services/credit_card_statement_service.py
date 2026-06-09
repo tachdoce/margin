@@ -9,12 +9,16 @@ from app.models.credit_card import CreditCard
 from app.models.credit_card_item_type import CreditCardItemType
 from app.models.credit_card_network import CreditCardNetwork
 from app.models.credit_card_purchase import CreditCardPurchase
+from app.models.credit_card_statement import CreditCardStatement
+from app.models.credit_card_statement_item import CreditCardStatementItem
 from app.models.currency import Currency
 from app.models.institution import Institution
 from app.models.staging_credit_card import StagingCreditCard
 from app.models.staging_credit_card_item import StagingCreditCardItem
 from app.models.user import User
 from app.schemas.credit_card_statement import StagingItemUpdate, StagingMadreUpdate, StagingStatementCreate
+from app.services.cash_flow.credit_cards import materialize_credit_card
+from app.services.review.credit_cards import review_credit_card
 from app.services.review.staging_credit_cards import review_staging_credit_card
 from app.services.scoping import require_user_currency
 
@@ -320,3 +324,214 @@ def acknowledge_staging_statement(db: Session, user: User) -> StagingCreditCard:
     db.commit()
     db.refresh(madre)
     return madre
+
+
+_MADRE_REQUIRED = (
+    "institution_id", "card_network_id", "closing_date", "due_date", "current_limit",
+    "total_local", "total_usd", "minimum_payment_local", "minimum_payment_usd", "rates_add_vat",
+)
+_NEW_CARD_RATES = (
+    "financing_rate_local", "overdue_rate_local", "financing_rate_usd", "overdue_rate_usd", "rates_add_vat",
+)
+
+
+def _staging_item_complete(it: StagingCreditCardItem) -> bool:
+    if None in (it.charge_date, it.description, it.amount, it.currency_id, it.item_type_id):
+        return False
+    ci, ti = it.current_installment, it.total_installments
+    if ci is None and ti is None:
+        return True
+    if ci is None or ti is None:
+        return False
+    return ci >= 1 and ti >= 1 and ci <= ti
+
+
+def _resolve_existing_card(db: Session, user_id, institution_id, card_network_id):
+    """La vigente si hay; si no, una soft-deleted; None si ninguna."""
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.user_id == user_id,
+            CreditCard.institution_id == institution_id,
+            CreditCard.card_network_id == card_network_id,
+            CreditCard.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if card is not None:
+        return card
+    return db.execute(
+        select(CreditCard)
+        .where(
+            CreditCard.user_id == user_id,
+            CreditCard.institution_id == institution_id,
+            CreditCard.card_network_id == card_network_id,
+            CreditCard.deleted_at.is_not(None),
+        )
+        .order_by(CreditCard.deleted_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _upsert_purchases(
+    db: Session, card: CreditCard, madre: StagingCreditCard, items: list[StagingCreditCardItem]
+) -> None:
+    sub_id = db.execute(
+        select(CreditCardItemType.id).where(CreditCardItemType.code == "suscripcion")
+    ).scalar_one_or_none()
+    for it in items:
+        if it.total_installments is not None:  # con cuotas: por clave
+            existing = db.execute(
+                select(CreditCardPurchase).where(
+                    CreditCardPurchase.credit_card_id == card.id,
+                    CreditCardPurchase.charge_date == it.charge_date,
+                    CreditCardPurchase.description == it.description,
+                    CreditCardPurchase.total_installments == it.total_installments,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.last_statement_closing_date = madre.closing_date
+                existing.item_type_id = it.item_type_id
+                continue
+        elif not (sub_id is not None and it.item_type_id == sub_id):
+            continue  # sin cuotas y no suscripción -> no califica
+        db.add(
+            CreditCardPurchase(
+                credit_card_id=card.id,
+                description=it.description,
+                charge_date=it.charge_date,
+                amount=it.amount,
+                currency_id=it.currency_id,
+                total_installments=it.total_installments,
+                item_type_id=it.item_type_id,
+                last_statement_closing_date=madre.closing_date,
+            )
+        )
+
+
+def promote_staging_statement(db: Session, user: User) -> CreditCard:
+    madre = db.execute(
+        select(StagingCreditCard).where(StagingCreditCard.user_id == user.id).with_for_update()
+    ).scalar_one_or_none()
+    if madre is None:
+        raise AppError(ErrorCode.not_found)
+
+    # 2. madre lista + completa (guarda defensiva de completitud)
+    if not madre.is_ready or any(getattr(madre, f) is None for f in _MADRE_REQUIRED):
+        raise AppError(ErrorCode.statement_not_ready)
+
+    # 3. ítems completos
+    items = list(
+        db.execute(
+            select(StagingCreditCardItem).where(
+                StagingCreditCardItem.staging_credit_card_id == madre.id
+            )
+        ).scalars()
+    )
+    if any(not _staging_item_complete(it) for it in items):
+        raise AppError(ErrorCode.items_incomplete)
+
+    # 4. tarjeta nueva -> tasas obligatorias
+    card = _resolve_existing_card(db, user.id, madre.institution_id, madre.card_network_id)
+    is_new = card is None
+    if is_new and any(getattr(madre, f) is None for f in _NEW_CARD_RATES):
+        raise AppError(ErrorCode.rates_required_new_card)
+
+    issue_year, issue_month = madre.closing_date.year, madre.closing_date.month
+
+    if not is_new:
+        # 5. período duplicado
+        if db.execute(
+            select(CreditCardStatement.id).where(
+                CreditCardStatement.credit_card_id == card.id,
+                CreditCardStatement.issue_year == issue_year,
+                CreditCardStatement.issue_month == issue_month,
+            )
+        ).first() is not None:
+            raise AppError(ErrorCode.statement_period_exists)
+        # 6. período posterior al último
+        last = db.execute(
+            select(CreditCardStatement.issue_year, CreditCardStatement.issue_month)
+            .where(CreditCardStatement.credit_card_id == card.id)
+            .order_by(CreditCardStatement.issue_year.desc(), CreditCardStatement.issue_month.desc())
+            .limit(1)
+        ).first()
+        if last is not None and (issue_year, issue_month) <= (last.issue_year, last.issue_month):
+            raise AppError(ErrorCode.statement_period_not_after_last)
+
+    # Paso 1: UPSERT credit_cards
+    if is_new:
+        card = CreditCard(
+            user_id=user.id,
+            institution_id=madre.institution_id,
+            card_network_id=madre.card_network_id,
+            current_limit=madre.current_limit,
+            closing_day=madre.closing_date.day,
+            financing_rate_local=madre.financing_rate_local,
+            overdue_rate_local=madre.overdue_rate_local,
+            financing_rate_usd=madre.financing_rate_usd,
+            overdue_rate_usd=madre.overdue_rate_usd,
+            rates_add_vat=madre.rates_add_vat,
+            review_findings="[]",
+            is_ready=False,
+        )
+        db.add(card)
+        db.flush()
+    else:
+        card.deleted_at = None  # reactiva si estaba soft-deleted
+        card.current_limit = madre.current_limit
+        if madre.financing_rate_local is not None:
+            card.financing_rate_local = madre.financing_rate_local
+        if madre.overdue_rate_local is not None:
+            card.overdue_rate_local = madre.overdue_rate_local
+        if madre.financing_rate_usd is not None:
+            card.financing_rate_usd = madre.financing_rate_usd
+        if madre.overdue_rate_usd is not None:
+            card.overdue_rate_usd = madre.overdue_rate_usd
+        if madre.rates_add_vat is not None:
+            card.rates_add_vat = madre.rates_add_vat
+        # explícito: garantiza created_at != updated_at (no se trata como nueva)
+        card.updated_at = datetime.now(timezone.utc)
+        db.flush()
+
+    # Paso 2: INSERT credit_card_statements
+    statement = CreditCardStatement(
+        credit_card_id=card.id,
+        issue_year=issue_year,
+        issue_month=issue_month,
+        closing_date=madre.closing_date,
+        due_date=madre.due_date,
+        total_local=madre.total_local,
+        total_usd=madre.total_usd,
+        minimum_payment_local=madre.minimum_payment_local,
+        minimum_payment_usd=madre.minimum_payment_usd,
+    )
+    db.add(statement)
+    db.flush()
+
+    # Paso 3: INSERT credit_card_statement_items
+    for it in items:
+        db.add(
+            CreditCardStatementItem(
+                credit_card_statement_id=statement.id,
+                charge_date=it.charge_date,
+                description=it.description,
+                amount=it.amount,
+                currency_id=it.currency_id,
+                current_installment=it.current_installment,
+                total_installments=it.total_installments,
+                item_type_id=it.item_type_id,
+            )
+        )
+    db.flush()
+
+    # Paso 4: purchases
+    _upsert_purchases(db, card, madre, items)
+
+    # reviewer (siempre) + motor
+    review_credit_card(db, card.id)
+    materialize_credit_card(db, card.id)
+
+    # cierre: borrar el staging (ítems por cascade)
+    db.delete(madre)
+    db.commit()
+    db.refresh(card)
+    return card

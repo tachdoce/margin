@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, status
@@ -7,6 +8,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.schemas.credit_card_statement import (
+    PromoteResult,
     StagingItemUpdate,
     StagingMadreOut,
     StagingMadreUpdate,
@@ -76,4 +78,17 @@ def acknowledge_staging_statement(
 ) -> StagingMadreOut:
     return StagingMadreOut.from_model(
         credit_card_statement_service.acknowledge_staging_statement(db, user)
+    )
+
+
+@router.post("/credit-card-statements/promote", response_model=PromoteResult)
+def promote_staging_statement(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PromoteResult:
+    card = credit_card_statement_service.promote_staging_statement(db, user)
+    return PromoteResult(
+        credit_card_id=card.id,
+        is_ready=card.is_ready,
+        review_findings=json.loads(card.review_findings),
     )
