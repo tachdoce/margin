@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.routers import (
-    auth, bootstrap, countries, credit_card_statements, debts, expenses, health,
+    auth, bootstrap, countries, credit_card_statements, credit_cards, debts, expenses, health,
     incomes, obligations, plan_movements, plans,
 )
 
@@ -24,6 +24,7 @@ app.include_router(countries.router)
 app.include_router(auth.router)
 app.include_router(bootstrap.router)
 app.include_router(credit_card_statements.router)
+app.include_router(credit_cards.router)
 app.include_router(incomes.router)
 app.include_router(plans.router)
 app.include_router(plan_movements.router)
