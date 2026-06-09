@@ -63,6 +63,7 @@ class ErrorCode(Enum):
     closing_day_invalid = (422, "El día de cierre debe estar entre 1 y 31.")
     card_already_exists = (409, "Ya tenés una tarjeta con ese emisor y esa red.")
     card_has_no_findings = (409, "La tarjeta no tiene observaciones para reconocer.")
+    statement_has_payments = (409, "No se puede borrar un resumen que ya tiene pagos registrados.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

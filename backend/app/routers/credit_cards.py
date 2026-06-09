@@ -68,3 +68,12 @@ def list_statement_items(
 ) -> dict:
     items = credit_card_service.list_statement_items(db, user, card_id, statement_id)
     return {"items": [StatementItemOut.from_model(it) for it in items]}
+
+
+@router.delete("/credit-cards/{card_id}/statements", status_code=status.HTTP_204_NO_CONTENT)
+def delete_last_statement(
+    card_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    credit_card_service.delete_last_statement(db, user, card_id)

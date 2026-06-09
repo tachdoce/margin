@@ -225,3 +225,42 @@ def delete_credit_card(db: Session, user: User, card_id: uuid.UUID) -> None:
         card.deleted_at = datetime.now(timezone.utc)
 
     db.commit()
+
+
+def delete_last_statement(db: Session, user: User, card_id: uuid.UUID) -> None:
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.id == card_id, CreditCard.user_id == user.id
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if card is None:
+        raise AppError(ErrorCode.not_found)
+
+    statement = db.execute(
+        select(CreditCardStatement)
+        .where(CreditCardStatement.credit_card_id == card.id)
+        .order_by(CreditCardStatement.issue_year.desc(), CreditCardStatement.issue_month.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if statement is None:
+        raise AppError(ErrorCode.not_found)
+
+    real_payments = db.execute(
+        select(func.count())
+        .select_from(CashFlowPayment)
+        .join(CashFlowEntry, CashFlowPayment.cash_flow_entry_id == CashFlowEntry.id)
+        .where(
+            CashFlowEntry.source_type == "tarjeta_credito",
+            CashFlowEntry.source_id == card.id,
+            CashFlowEntry.issue_year == statement.issue_year,
+            CashFlowEntry.issue_month == statement.issue_month,
+            CashFlowPayment.plan_id.is_(None),
+        )
+    ).scalar_one()
+    if real_payments > 0:
+        raise AppError(ErrorCode.statement_has_payments)
+
+    db.delete(statement)  # items por ON DELETE CASCADE; purchases NO se tocan
+    db.flush()
+    materialize_credit_card(db, card.id)  # reproyecta desde el nuevo último
+    db.commit()
