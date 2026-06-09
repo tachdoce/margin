@@ -1,13 +1,19 @@
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.models.credit_card import CreditCard
+from app.models.credit_card_network import CreditCardNetwork
 from app.models.credit_card_statement import CreditCardStatement
 from app.models.credit_card_statement_item import CreditCardStatementItem
+from app.models.institution import Institution
 from app.models.user import User
+from app.schemas.credit_card import CreditCardUpdate
+from app.services.cash_flow.credit_cards import materialize_credit_card
+from app.services.review.credit_cards import review_credit_card
 
 
 def list_credit_cards(db: Session, user: User) -> list[CreditCard]:
@@ -60,3 +66,94 @@ def list_statement_items(
             .order_by(CreditCardStatementItem.charge_date)
         ).scalars()
     )
+
+
+def update_credit_card(
+    db: Session, user: User, card_id: uuid.UUID, payload: CreditCardUpdate
+) -> CreditCard:
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.id == card_id,
+            CreditCard.user_id == user.id,
+            CreditCard.deleted_at.is_(None),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if card is None:
+        raise AppError(ErrorCode.not_found)
+
+    if payload.institution_id is None and payload.card_network_id is None and payload.closing_day is None:
+        raise AppError(ErrorCode.empty_patch)
+
+    if payload.institution_id is not None:
+        inst = db.get(Institution, payload.institution_id)
+        if inst is None or inst.country_code != user.country_code:
+            raise AppError(ErrorCode.institution_invalid, field="institution_id")
+    if payload.card_network_id is not None:
+        net = db.get(CreditCardNetwork, payload.card_network_id)
+        if net is None or net.country_code != user.country_code:
+            raise AppError(ErrorCode.card_network_invalid, field="card_network_id")
+    if payload.closing_day is not None and not (1 <= payload.closing_day <= 31):
+        raise AppError(ErrorCode.closing_day_invalid, field="closing_day")
+
+    # unicidad: combinación final contra otra vigente del usuario
+    new_inst = payload.institution_id if payload.institution_id is not None else card.institution_id
+    new_net = payload.card_network_id if payload.card_network_id is not None else card.card_network_id
+    if new_inst != card.institution_id or new_net != card.card_network_id:
+        clash = db.execute(
+            select(CreditCard.id).where(
+                CreditCard.user_id == user.id,
+                CreditCard.institution_id == new_inst,
+                CreditCard.card_network_id == new_net,
+                CreditCard.deleted_at.is_(None),
+                CreditCard.id != card.id,
+            )
+        ).first()
+        if clash is not None:
+            raise AppError(ErrorCode.card_already_exists)
+
+    if payload.institution_id is not None:
+        card.institution_id = payload.institution_id
+    if payload.card_network_id is not None:
+        card.card_network_id = payload.card_network_id
+    if payload.closing_day is not None:
+        card.closing_day = payload.closing_day
+    db.flush()
+
+    review_credit_card(db, card.id)
+    materialize_credit_card(db, card.id)
+    db.commit()
+    db.refresh(card)
+    return card
+
+
+def acknowledge_credit_card(db: Session, user: User, card_id: uuid.UUID) -> CreditCard:
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.id == card_id,
+            CreditCard.user_id == user.id,
+            CreditCard.deleted_at.is_(None),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if card is None:
+        raise AppError(ErrorCode.not_found)
+    if card.review_findings == "[]":
+        raise AppError(ErrorCode.card_has_no_findings)
+
+    # updated_at: bump si era nueva (created_at == updated_at) para que deje de serlo; si no, preservar.
+    new_updated_at = (
+        datetime.now(timezone.utc) if card.created_at == card.updated_at else card.updated_at
+    )
+    db.execute(
+        update(CreditCard)
+        .where(CreditCard.id == card.id)
+        .values(
+            review_findings="[]",
+            user_acknowledged_at=datetime.now(timezone.utc),
+            is_ready=True,
+            updated_at=new_updated_at,
+        )
+    )
+    materialize_credit_card(db, card.id)
+    db.commit()
+    db.refresh(card)
+    return card

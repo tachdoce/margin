@@ -44,6 +44,12 @@ class CreditCardOut(BaseModel):
         )
 
 
+class CreditCardUpdate(BaseModel):
+    institution_id: int | None = None
+    card_network_id: int | None = None
+    closing_day: int | None = None
+
+
 class StatementOut(BaseModel):
     id: uuid.UUID
     issue_year: int

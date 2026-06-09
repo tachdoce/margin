@@ -60,6 +60,9 @@ class ErrorCode(Enum):
     rates_required_new_card = (409, "Para dar de alta una tarjeta nueva, completá las tasas y el dato de IVA.")
     statement_period_exists = (409, "Ya cargaste un resumen de ese mes para esta tarjeta.")
     statement_period_not_after_last = (409, "Tenés que cargar el resumen siguiente al último que ya cargaste.")
+    closing_day_invalid = (422, "El día de cierre debe estar entre 1 y 31.")
+    card_already_exists = (409, "Ya tenés una tarjeta con ese emisor y esa red.")
+    card_has_no_findings = (409, "La tarjeta no tiene observaciones para reconocer.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
