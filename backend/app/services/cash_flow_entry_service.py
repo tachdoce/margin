@@ -1,10 +1,14 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
+from app.models.cash_flow_entry import CashFlowEntry
+from app.models.obligation import Obligation
+from app.models.obligation_type import ObligationType
 from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
@@ -157,3 +161,53 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None) -> Timeline
         )
 
     return TimelineOut(months=months, open_debts=open_debts)
+
+
+EDITABLE_ENTRY_SOURCE_TYPES = ("gasto",)
+
+
+def list_by_source(db, user, source_id, *, today: date | None = None):
+    if source_id is None:
+        raise AppError(ErrorCode.source_id_required)
+    today = today or date.today()
+
+    kind = db.execute(
+        select(ObligationType.obligation_kind)
+        .join(Obligation, Obligation.obligation_type_id == ObligationType.id)
+        .where(Obligation.id == source_id, Obligation.user_id == user.id)
+    ).scalar_one_or_none()
+    if kind is None:
+        raise AppError(ErrorCode.not_found)
+    if kind not in EDITABLE_ENTRY_SOURCE_TYPES:
+        raise AppError(ErrorCode.source_not_editable)
+
+    month_start = today.replace(day=1)
+    stmt = (
+        select(CashFlowEntry)
+        .where(
+            CashFlowEntry.user_id == user.id,
+            CashFlowEntry.source_id == source_id,
+            CashFlowEntry.source_type.in_(EDITABLE_ENTRY_SOURCE_TYPES),
+            CashFlowEntry.event_date >= month_start,
+        )
+        .order_by(CashFlowEntry.event_date.asc())
+    )
+    return list(db.execute(stmt).scalars())
+
+
+def update_entry_amount(db, user, entry_id, amount, *, today: date | None = None):
+    today = today or date.today()
+    entry = db.get(CashFlowEntry, entry_id)
+    if entry is None or entry.user_id != user.id:
+        raise AppError(ErrorCode.not_found)
+    if entry.source_type not in EDITABLE_ENTRY_SOURCE_TYPES:
+        raise AppError(ErrorCode.source_not_editable)
+    if entry.event_date is None or entry.event_date < today.replace(day=1):
+        raise AppError(ErrorCode.entry_not_editable)
+    if amount <= 0:
+        raise AppError(ErrorCode.amount_invalid, field="amount")
+    entry.amount = amount
+    db.flush()
+    db.commit()
+    db.refresh(entry)
+    return entry

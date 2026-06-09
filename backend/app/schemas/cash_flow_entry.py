@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TimelineEntryOut(BaseModel):
@@ -35,3 +35,16 @@ class MonthOut(BaseModel):
 class TimelineOut(BaseModel):
     months: list[MonthOut]
     open_debts: list[TimelineEntryOut]
+
+
+class SourceEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    event_date: date
+    amount: Decimal
+    currency_id: int
+    source_type: str
+
+
+class EntryAmountUpdate(BaseModel):
+    amount: Decimal

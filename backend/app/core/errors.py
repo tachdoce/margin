@@ -71,6 +71,9 @@ class ErrorCode(Enum):
     month_invalid = (422, "El mes indicado no es válido.")
     planned_date_on_real_payment = (422, "No se puede agendar fecha en un pago real.")
     planned_date_invalid = (422, "La fecha agendada no es válida.")
+    source_id_required = (422, "Falta indicar la fuente.")
+    source_not_editable = (422, "Este tipo de movimiento no se puede editar.")
+    entry_not_editable = (409, "No se puede editar un mes ya pasado.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
