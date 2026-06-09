@@ -54,6 +54,7 @@ class ErrorCode(Enum):
     statement_incomplete = (422, "El resumen quedaría incompleto.")
     item_type_invalid = (422, "Tipo de ítem no válido.")
     item_incomplete = (422, "El ítem quedaría incompleto.")
+    statement_has_no_findings = (409, "El resumen no tiene observaciones para reconocer.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

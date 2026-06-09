@@ -424,3 +424,98 @@ def test_put_401(client, cc_catalog):
     assert client.put("/credit-card-statements", json=_madre_body()).status_code == 401
     import uuid as _uuid
     assert client.put(f"/credit-card-statements/items/{_uuid.uuid4()}", json=_item_body()).status_code == 401
+
+
+# ---- GET ----
+
+def test_get_200(client, cc_catalog):
+    headers = _auth(client)
+    posted = _post_staging(client, headers)
+    r = client.get("/credit-card-statements", headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == posted["id"]
+    assert len(body["items"]) == len(posted["items"])
+    assert all("missing_fields" in it for it in body["items"])
+
+
+def test_get_404_no_staging(client, cc_catalog):
+    headers = _auth(client)
+    assert client.get("/credit-card-statements", headers=headers).status_code == 404
+
+
+def test_get_reflects_puts(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    client.put("/credit-card-statements", json=_madre_body(current_limit=999999.00), headers=headers)
+    body = client.get("/credit-card-statements", headers=headers).json()
+    assert body["current_limit"] == "999999.00"
+
+
+def test_get_does_not_rereview(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    first = client.get("/credit-card-statements", headers=headers).json()
+    second = client.get("/credit-card-statements", headers=headers).json()
+    assert first["review_findings"] == second["review_findings"]
+    assert first["is_ready"] == second["is_ready"]
+
+
+# ---- DELETE ----
+
+def test_delete_204(client, cc_catalog, db_session):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.delete("/credit-card-statements", headers=headers)
+    assert r.status_code == 204
+    assert client.get("/credit-card-statements", headers=headers).status_code == 404
+    assert db_session.execute(select(StagingCreditCardItem)).scalars().all() == []  # cascade
+    assert client.post("/credit-card-statements", json=_payload(), headers=headers).status_code == 201
+
+
+def test_delete_404_no_staging(client, cc_catalog):
+    headers = _auth(client)
+    assert client.delete("/credit-card-statements", headers=headers).status_code == 404
+
+
+# ---- acknowledge ----
+
+def test_acknowledge_200(client, cc_catalog):
+    headers = _auth(client)
+    posted = _post_staging(client, headers)
+    assert posted["review_findings"] == ["new_card"]
+    r = client.post("/credit-card-statements/acknowledge", json={}, headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["review_findings"] == []
+    assert body["is_ready"] is True
+    assert "items" not in body
+
+
+def test_acknowledge_404_no_staging(client, cc_catalog):
+    headers = _auth(client)
+    assert client.post("/credit-card-statements/acknowledge", json={}, headers=headers).status_code == 404
+
+
+def test_acknowledge_409_no_findings(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    client.post("/credit-card-statements/acknowledge", json={}, headers=headers)
+    r = client.post("/credit-card-statements/acknowledge", json={}, headers=headers)
+    assert r.status_code == 409
+    assert r.json()["code"] == "statement_has_no_findings"
+
+
+def test_acknowledge_then_get_stays_clean(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    client.post("/credit-card-statements/acknowledge", json={}, headers=headers)
+    body = client.get("/credit-card-statements", headers=headers).json()
+    assert body["review_findings"] == []
+    assert body["is_ready"] is True
+
+
+def test_chicos_401(client, cc_catalog):
+    assert client.get("/credit-card-statements").status_code == 401
+    assert client.delete("/credit-card-statements").status_code == 401
+    assert client.post("/credit-card-statements/acknowledge", json={}).status_code == 401

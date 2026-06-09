@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -271,3 +272,51 @@ def update_staging_item(
     db.commit()
     db.refresh(item)
     return item
+
+
+def get_staging_statement(
+    db: Session, user: User
+) -> tuple[StagingCreditCard, list[StagingCreditCardItem]]:
+    madre = db.execute(
+        select(StagingCreditCard).where(StagingCreditCard.user_id == user.id)
+    ).scalar_one_or_none()
+    if madre is None:
+        raise AppError(ErrorCode.not_found)
+    items = db.execute(
+        select(StagingCreditCardItem).where(StagingCreditCardItem.staging_credit_card_id == madre.id)
+    ).scalars().all()
+    return madre, list(items)
+
+
+def delete_staging_statement(db: Session, user: User) -> None:
+    madre = db.execute(
+        select(StagingCreditCard).where(StagingCreditCard.user_id == user.id)
+    ).scalar_one_or_none()
+    if madre is None:
+        raise AppError(ErrorCode.not_found)
+    db.delete(madre)  # ítems por ON DELETE CASCADE
+    db.commit()
+
+
+def acknowledge_staging_statement(db: Session, user: User) -> StagingCreditCard:
+    madre = db.execute(
+        select(StagingCreditCard).where(StagingCreditCard.user_id == user.id).with_for_update()
+    ).scalar_one_or_none()
+    if madre is None:
+        raise AppError(ErrorCode.not_found)
+    if madre.review_findings == "[]":
+        raise AppError(ErrorCode.statement_has_no_findings)
+    # UPDATE puntual; updated_at se preserva (reconocer no es cambio de negocio).
+    db.execute(
+        update(StagingCreditCard)
+        .where(StagingCreditCard.id == madre.id)
+        .values(
+            review_findings="[]",
+            user_acknowledged_at=datetime.now(timezone.utc),
+            is_ready=True,
+            updated_at=madre.updated_at,
+        )
+    )
+    db.commit()
+    db.refresh(madre)
+    return madre

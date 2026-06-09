@@ -50,3 +50,30 @@ def update_staging_item(
     return StagingStatementItemOut.from_model(
         credit_card_statement_service.update_staging_item(db, user, item_id, payload)
     )
+
+
+@router.get("/credit-card-statements", response_model=StagingStatementOut)
+def get_staging_statement(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StagingStatementOut:
+    madre, items = credit_card_statement_service.get_staging_statement(db, user)
+    return StagingStatementOut.from_model(madre, items)
+
+
+@router.delete("/credit-card-statements", status_code=status.HTTP_204_NO_CONTENT)
+def delete_staging_statement(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    credit_card_statement_service.delete_staging_statement(db, user)
+
+
+@router.post("/credit-card-statements/acknowledge", response_model=StagingMadreOut)
+def acknowledge_staging_statement(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StagingMadreOut:
+    return StagingMadreOut.from_model(
+        credit_card_statement_service.acknowledge_staging_statement(db, user)
+    )
