@@ -65,6 +65,12 @@ class ErrorCode(Enum):
     card_has_no_findings = (409, "La tarjeta no tiene observaciones para reconocer.")
     statement_has_payments = (409, "No se puede borrar un resumen que ya tiene pagos registrados.")
     card_not_deleted = (409, "La tarjeta no está borrada.")
+    entry_not_payable = (409, "Esta entrada no acepta este pago.")
+    planned_payment_incomplete = (422, "Un pago planificado necesita plan y fecha.")
+    plan_id_required = (422, "Falta indicar el plan.")
+    month_invalid = (422, "El mes indicado no es válido.")
+    planned_date_on_real_payment = (422, "No se puede agendar fecha en un pago real.")
+    planned_date_invalid = (422, "La fecha agendada no es válida.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
