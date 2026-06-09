@@ -64,6 +64,8 @@ def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
     assert set(catalogs.keys()) == CATALOG_KEYS
     # filtrado por país: solo data de UY
     assert {c["name"] for c in catalogs["currencies"]} == {"Peso"}
+    peso = next(c for c in catalogs["currencies"] if c["name"] == "Peso")
+    assert peso["allowed_in_credit_card"] is True  # expuesto para los selects de tarjetas
     assert {i["name"] for i in catalogs["institutions"]} == {"BROU"}
     # priority_levels: todos (incluye el nivel 1)
     levels = {p["level"] for p in catalogs["priority_levels"]}

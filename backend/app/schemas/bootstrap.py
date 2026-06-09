@@ -9,6 +9,7 @@ class CurrencyOut(_Read):
     id: int
     name: str
     is_legal_tender: bool
+    allowed_in_credit_card: bool
 
 
 class ObligationTypeOut(_Read):
