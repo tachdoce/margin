@@ -10,6 +10,7 @@ import PlanMovements from '../pages/PlanMovements.vue'
 import Expenses from '../pages/Expenses.vue'
 import Debts from '../pages/Debts.vue'
 import CreditCards from '../pages/CreditCards.vue'
+import CashFlow from '../pages/CashFlow.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/expenses', component: Expenses },
     { path: '/debts', component: Debts },
     { path: '/credit-cards', component: CreditCards },
+    { path: '/cash-flow', component: CashFlow },
   ],
 })
 

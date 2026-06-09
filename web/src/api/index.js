@@ -148,6 +148,25 @@ export const api = {
   listCardStatementItems(cardId, statementId) {
     return request('GET', `/credit-cards/${cardId}/statements/${statementId}/items`)
   },
+  // --- flujo de caja: timeline + pagos ---
+  getTimeline(planId) {
+    return request('GET', `/cash-flow-entries?plan_id=${planId}`)
+  },
+  updateEntry(entryId, body) {
+    return request('PATCH', `/cash-flow-entries/${entryId}`, body)
+  },
+  listPayments(entryId, planId) {
+    return request('GET', `/cash-flow-entries/${entryId}/payments?plan_id=${planId}`)
+  },
+  createPayment(entryId, body) {
+    return request('POST', `/cash-flow-entries/${entryId}/payments`, body)
+  },
+  updatePayment(entryId, paymentId, body) {
+    return request('PATCH', `/cash-flow-entries/${entryId}/payments/${paymentId}`, body)
+  },
+  deletePayment(entryId, paymentId) {
+    return request('DELETE', `/cash-flow-entries/${entryId}/payments/${paymentId}`)
+  },
 }
 
 export function saveSession({ user, token }) {

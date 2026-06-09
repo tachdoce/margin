@@ -27,6 +27,7 @@ function logout() {
     <router-link class="drawer-item" to="/expenses" @click="open = false">Gastos</router-link>
     <router-link class="drawer-item" to="/debts" @click="open = false">Deudas</router-link>
     <router-link class="drawer-item" to="/credit-cards" @click="open = false">Tarjetas</router-link>
+    <router-link class="drawer-item" to="/cash-flow" @click="open = false">Flujo</router-link>
     <button class="drawer-logout" @click="logout">Cerrar sesión</button>
   </nav>
 </template>
