@@ -77,3 +77,12 @@ def delete_last_statement(
     db: Session = Depends(get_db),
 ) -> None:
     credit_card_service.delete_last_statement(db, user, card_id)
+
+
+@router.post("/credit-cards/{card_id}/reactivate", response_model=CreditCardOut)
+def reactivate_credit_card(
+    card_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CreditCardOut:
+    return CreditCardOut.from_model(credit_card_service.reactivate_credit_card(db, user, card_id))

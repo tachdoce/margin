@@ -264,3 +264,35 @@ def delete_last_statement(db: Session, user: User, card_id: uuid.UUID) -> None:
     db.flush()
     materialize_credit_card(db, card.id)  # reproyecta desde el nuevo último
     db.commit()
+
+
+def reactivate_credit_card(db: Session, user: User, card_id: uuid.UUID) -> CreditCard:
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.id == card_id, CreditCard.user_id == user.id
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if card is None:
+        raise AppError(ErrorCode.not_found)
+    if card.deleted_at is None:
+        raise AppError(ErrorCode.card_not_deleted)
+
+    clash = db.execute(
+        select(CreditCard.id).where(
+            CreditCard.user_id == user.id,
+            CreditCard.institution_id == card.institution_id,
+            CreditCard.card_network_id == card.card_network_id,
+            CreditCard.deleted_at.is_(None),
+            CreditCard.id != card.id,
+        )
+    ).first()
+    if clash is not None:
+        raise AppError(ErrorCode.card_already_exists)
+
+    card.deleted_at = None
+    db.flush()
+    review_credit_card(db, card.id)
+    materialize_credit_card(db, card.id)
+    db.commit()
+    db.refresh(card)
+    return card
