@@ -32,12 +32,18 @@
 `due_day`: `smallint`, **NOT NULL**, sin `server_default` (la setea el backend, igual convención que
 `closing_day`). Día del mes 1–31 del vencimiento de la tarjeta.
 
-Migración: `op.add_column('credit_cards', sa.Column('due_day', sa.SmallInteger(), nullable=False))`. Como la
-base de dev se recrea (tabla vacía), no hace falta backfill ni default. (Proyecto pre-producción; no hay datos
-reales que migrar.)
+**Posición física:** la columna debe quedar **inmediatamente debajo de `closing_day`** en la tabla. Un
+`ADD COLUMN` la agregaría al final (Postgres no reordena), así que en vez de una migración nueva se **edita la
+migración existente** `..._create_credit_card_tables.py`: en el `op.create_table('credit_cards', ...)` se
+inserta `sa.Column('due_day', sa.SmallInteger(), nullable=False)` justo después de la de `closing_day`. Luego
+se **recrea la base de dev** (`downgrade base` / drop + `alembic upgrade head`). No hace falta backfill ni
+default (tabla vacía; proyecto pre-producción, sin datos reales que migrar).
 
-Modelo `CreditCard`: agregar `due_day: Mapped[int] = mapped_column(SmallInteger, nullable=False)` junto a
-`closing_day`.
+> Editar una migración ya aplicada solo es aceptable acá porque es dev y se recrea la base; mismo criterio que
+> usamos antes con el seed de `obligation_types`.
+
+Modelo `CreditCard`: agregar `due_day: Mapped[int] = mapped_column(SmallInteger, nullable=False)`
+**inmediatamente después de `closing_day`** (mismo orden que en la migración).
 
 ---
 
@@ -119,7 +125,8 @@ Sumar `due_day` a `CreditCardUpdate` (opcional) y al servicio `update_credit_car
 ## 8. Plan de implementación (orientativo)
 
 Un slice (`feat/credit-cards-due-day`), TDD:
-1. Modelo `due_day` + migración; recrear DB de dev.
+1. Modelo `due_day` (tras `closing_day`) + editar la migración `create_credit_card_tables` (columna tras
+   `closing_day`); recrear DB de dev.
 2. Promote (precarga al crear) + tests.
 3. Motor R2 (heurística de mes) + tests (actualizar los existentes).
 4. PATCH (`due_day` + validación) + tests.
