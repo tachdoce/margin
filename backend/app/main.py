@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.routers import (
-    auth, bootstrap, cash_flow_payments, countries, credit_card_statements, credit_cards, debts,
-    expenses, health, incomes, obligations, plan_movements, plans,
+    auth, bootstrap, cash_flow_entries, cash_flow_payments, countries, credit_card_statements,
+    credit_cards, debts, expenses, health, incomes, obligations, plan_movements, plans,
 )
 
 app = FastAPI(title=settings.app_name)
@@ -32,3 +32,4 @@ app.include_router(expenses.router)
 app.include_router(debts.router)
 app.include_router(obligations.router)
 app.include_router(cash_flow_payments.router)
+app.include_router(cash_flow_entries.router)
