@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -38,6 +38,15 @@ def acknowledge_credit_card(
     db: Session = Depends(get_db),
 ) -> CreditCardOut:
     return CreditCardOut.from_model(credit_card_service.acknowledge_credit_card(db, user, card_id))
+
+
+@router.delete("/credit-cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_credit_card(
+    card_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    credit_card_service.delete_credit_card(db, user, card_id)
 
 
 @router.get("/credit-cards/{card_id}/statements")

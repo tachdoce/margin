@@ -1,12 +1,15 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
+from app.models.cash_flow_entry import CashFlowEntry
+from app.models.cash_flow_payment import CashFlowPayment
 from app.models.credit_card import CreditCard
 from app.models.credit_card_network import CreditCardNetwork
+from app.models.credit_card_purchase import CreditCardPurchase
 from app.models.credit_card_statement import CreditCardStatement
 from app.models.credit_card_statement_item import CreditCardStatementItem
 from app.models.institution import Institution
@@ -157,3 +160,68 @@ def acknowledge_credit_card(db: Session, user: User, card_id: uuid.UUID) -> Cred
     db.commit()
     db.refresh(card)
     return card
+
+
+def delete_credit_card(db: Session, user: User, card_id: uuid.UUID) -> None:
+    card = db.execute(
+        select(CreditCard).where(
+            CreditCard.id == card_id,
+            CreditCard.user_id == user.id,
+            CreditCard.deleted_at.is_(None),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if card is None:
+        raise AppError(ErrorCode.not_found)
+
+    real_payments = db.execute(
+        select(func.count())
+        .select_from(CashFlowPayment)
+        .join(CashFlowEntry, CashFlowPayment.cash_flow_entry_id == CashFlowEntry.id)
+        .where(
+            CashFlowEntry.source_type == "tarjeta_credito",
+            CashFlowEntry.source_id == card.id,
+            CashFlowPayment.plan_id.is_(None),
+        )
+    ).scalar_one()
+
+    if real_payments == 0:
+        # hard-delete total (orden por las FKs RESTRICT de statements/purchases hacia credit_cards)
+        db.execute(
+            delete(CashFlowEntry)
+            .where(CashFlowEntry.source_type == "tarjeta_credito", CashFlowEntry.source_id == card.id)
+            .execution_options(synchronize_session=False)
+        )
+        db.execute(
+            delete(CreditCardPurchase)
+            .where(CreditCardPurchase.credit_card_id == card.id)
+            .execution_options(synchronize_session=False)
+        )
+        db.execute(
+            delete(CreditCardStatement)
+            .where(CreditCardStatement.credit_card_id == card.id)
+            .execution_options(synchronize_session=False)
+        )
+        db.delete(card)
+    else:
+        # soft-delete: borrar solo las entries sin pago real; la tarjeta y la historia sobreviven
+        paid_entry_ids = (
+            select(CashFlowPayment.cash_flow_entry_id)
+            .join(CashFlowEntry, CashFlowPayment.cash_flow_entry_id == CashFlowEntry.id)
+            .where(
+                CashFlowEntry.source_type == "tarjeta_credito",
+                CashFlowEntry.source_id == card.id,
+                CashFlowPayment.plan_id.is_(None),
+            )
+        )
+        db.execute(
+            delete(CashFlowEntry)
+            .where(
+                CashFlowEntry.source_type == "tarjeta_credito",
+                CashFlowEntry.source_id == card.id,
+                CashFlowEntry.id.not_in(paid_entry_ids),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        card.deleted_at = datetime.now(timezone.utc)
+
+    db.commit()
