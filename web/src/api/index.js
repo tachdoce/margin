@@ -104,6 +104,50 @@ export const api = {
   acknowledgeObligation(id) {
     return request('POST', `/obligations/${id}/acknowledge`)
   },
+  // --- tarjetas de crédito: staging ---
+  getStaging() {
+    return request('GET', '/credit-card-statements')
+  },
+  loadStatement(body) {
+    return request('POST', '/credit-card-statements', body)
+  },
+  updateStagingMadre(body) {
+    return request('PUT', '/credit-card-statements', body)
+  },
+  updateStagingItem(itemId, body) {
+    return request('PUT', `/credit-card-statements/items/${itemId}`, body)
+  },
+  acknowledgeStaging() {
+    return request('POST', '/credit-card-statements/acknowledge')
+  },
+  discardStaging() {
+    return request('DELETE', '/credit-card-statements')
+  },
+  promoteStaging() {
+    return request('POST', '/credit-card-statements/promote')
+  },
+  // --- tarjetas de crédito: definitivas ---
+  listCreditCards() {
+    return request('GET', '/credit-cards')
+  },
+  updateCreditCard(id, body) {
+    return request('PATCH', `/credit-cards/${id}`, body)
+  },
+  acknowledgeCreditCard(id) {
+    return request('POST', `/credit-cards/${id}/acknowledge`)
+  },
+  deleteCreditCard(id) {
+    return request('DELETE', `/credit-cards/${id}`)
+  },
+  reactivateCreditCard(id) {
+    return request('POST', `/credit-cards/${id}/reactivate`)
+  },
+  listCardStatements(cardId) {
+    return request('GET', `/credit-cards/${cardId}/statements`)
+  },
+  listCardStatementItems(cardId, statementId) {
+    return request('GET', `/credit-cards/${cardId}/statements/${statementId}/items`)
+  },
 }
 
 export function saveSession({ user, token }) {
