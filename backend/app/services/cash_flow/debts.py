@@ -17,6 +17,7 @@ HORIZON = date(2027, 12, 31)
 
 def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> list[date]:
     """event_date de cada cuota/evento que la deuda debería tener. Vacío si está cerrada."""
+    month_start = today.replace(day=1)
     if obligation.is_closed:
         return []
 
@@ -30,7 +31,7 @@ def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> l
         y, m = fdd.year, fdd.month
         for _ in range(obligation.total_installments):
             ed = compute_event_date(y, m, obligation.due_day, obligation.shift_weekends)
-            if today <= ed <= horizon:
+            if month_start <= ed <= horizon:
                 dates.append(ed)
             m += 1
             if m > 12:
@@ -38,7 +39,7 @@ def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> l
     else:  # pago único
         fdd = obligation.first_due_date
         ed = compute_event_date(fdd.year, fdd.month, fdd.day, obligation.shift_weekends)
-        if today <= ed <= horizon:
+        if month_start <= ed <= horizon:
             dates.append(ed)
     return dates
 
@@ -50,6 +51,7 @@ def materialize_debt(
     (año, mes, currency_id), congelando las tasas efectivas. Gate: is_ready False → no-op. No commit."""
     if today is None:
         today = date.today()
+    month_start = today.replace(day=1)
 
     obligation = db.execute(
         select(Obligation).where(Obligation.id == obligation_id).with_for_update()
@@ -105,7 +107,7 @@ def materialize_debt(
                 )
             )
 
-    # borrar stale: solo futuras (event_date >= today) sin pago real; con pago real → raise.
+    # borrar stale: solo del mes actual en adelante (event_date >= month_start) sin pago real; con pago real → raise.
     stale = [e for key, e in by_key.items() if key not in target_keys]
     if stale:
         paid_ids = set(
@@ -117,7 +119,7 @@ def materialize_debt(
             ).scalars()
         )
         for e in stale:
-            if e.event_date is not None and e.event_date >= today:
+            if e.event_date is not None and e.event_date >= month_start:
                 if e.id in paid_ids:
                     raise RuntimeError(
                         f"materialize_debt: invariante violado, "

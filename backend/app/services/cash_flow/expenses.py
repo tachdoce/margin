@@ -24,6 +24,7 @@ def _iter_months(start_year: int, start_month: int, end_year: int, end_month: in
 
 def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> list[date]:
     """event_date de cada entry que el gasto debería tener. Vacío si está cerrado."""
+    month_start = today.replace(day=1)
     if obligation.is_closed:
         return []
 
@@ -31,12 +32,12 @@ def _target_event_dates(obligation: Obligation, today: date, horizon: date) -> l
     if obligation.is_monthly_recurring:
         for y, m in _iter_months(today.year, today.month, horizon.year, horizon.month):
             ed = compute_event_date(y, m, obligation.due_day, obligation.shift_weekends)
-            if today <= ed <= horizon:
+            if month_start <= ed <= horizon:
                 dates.append(ed)
     else:
         fdd = obligation.first_due_date
         ed = compute_event_date(fdd.year, fdd.month, fdd.day, obligation.shift_weekends)
-        if today <= ed <= horizon:
+        if month_start <= ed <= horizon:
             dates.append(ed)
     return dates
 
@@ -48,6 +49,7 @@ def materialize_expense(
     (año, mes, currency_id). Gate: si is_ready es False, no-op. No hace commit (lo controla el caller)."""
     if today is None:
         today = date.today()
+    month_start = today.replace(day=1)
 
     obligation = db.execute(
         select(Obligation).where(Obligation.id == obligation_id).with_for_update()
@@ -90,7 +92,7 @@ def materialize_expense(
                 )
             )
 
-    # borrar las existentes fuera del objetivo: solo futuras (event_date >= today).
+    # borrar las existentes fuera del objetivo: solo del mes actual en adelante (event_date >= month_start).
     # Si una futura stale tiene pago REAL (plan_id IS NULL) → no se borra: raise (rollback).
     stale = [e for key, e in by_key.items() if key not in target_keys]
     if stale:
@@ -103,7 +105,7 @@ def materialize_expense(
             ).scalars()
         )
         for e in stale:
-            if e.event_date is not None and e.event_date >= today:
+            if e.event_date is not None and e.event_date >= month_start:
                 if e.id in paid_ids:
                     raise RuntimeError(
                         f"materialize_expense: invariante violado, "

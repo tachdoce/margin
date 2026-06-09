@@ -206,3 +206,18 @@ def test_shift_weekends_corre_finde(db_session, user):
     entries = _entries(db_session, o.id)
     assert len(entries) == 1
     assert entries[0].event_date == date(2026, 7, 6)
+
+
+def _entries_deuda(db_session, deuda_id):
+    return list(db_session.execute(
+        select(CashFlowEntry)
+        .where(CashFlowEntry.source_type == "deuda", CashFlowEntry.source_id == deuda_id)
+        .order_by(CashFlowEntry.event_date)
+    ).scalars())
+
+
+def test_deuda_cuota_mes_actual_aunque_el_dia_paso(db_session, user):
+    d = _deuda(db_session, user, first_due_date=date(2026, 6, 1), due_day=10, total_installments=12)
+    materialize_debt(db_session, d.id, today=date(2026, 6, 20), horizon=date(2026, 12, 31))
+    eds = [e.event_date for e in _entries_deuda(db_session, d.id)]
+    assert date(2026, 6, 10) in eds  # cuota de junio incluida (hoy 20 > día 10)

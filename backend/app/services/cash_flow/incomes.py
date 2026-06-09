@@ -24,6 +24,7 @@ def _iter_months(start_year: int, start_month: int, end_year: int, end_month: in
 
 def _target_event_dates(income: Income, today: date, horizon: date) -> list[date]:
     """event_date de cada entry que el income debería tener. Vacío si está borrado."""
+    month_start = today.replace(day=1)
     if income.deleted_at is not None:
         return []
 
@@ -31,14 +32,14 @@ def _target_event_dates(income: Income, today: date, horizon: date) -> list[date
     if income.is_monthly_recurring:
         for y, m in _iter_months(today.year, today.month, horizon.year, horizon.month):
             ed = compute_event_date(y, m, income.payment_day, income.shift_weekends)
-            if today <= ed <= horizon:
+            if month_start <= ed <= horizon:
                 dates.append(ed)
     else:
         y, m = income.first_income_date.year, income.first_income_date.month
         day = income.first_income_date.day
         for _ in range(income.total_months):
             ed = compute_event_date(y, m, day, income.shift_weekends)
-            if today <= ed <= horizon:
+            if month_start <= ed <= horizon:
                 dates.append(ed)
             m += 1
             if m > 12:
@@ -53,6 +54,7 @@ def materialize_income(
     (año, mes, currency_id). No hace commit: la transacción la controla el caller."""
     if today is None:
         today = date.today()
+    month_start = today.replace(day=1)
 
     income = db.execute(
         select(Income).where(Income.id == income_id).with_for_update()
@@ -93,7 +95,7 @@ def materialize_income(
                 )
             )
 
-    # borrar las existentes fuera del objetivo: solo futuras (event_date >= today) sin pago real
+    # borrar las existentes fuera del objetivo: solo del mes actual en adelante (event_date >= month_start) sin pago real
     stale = [e for key, e in by_key.items() if key not in target_keys]
     if stale:
         paid_ids = set(
@@ -105,7 +107,7 @@ def materialize_income(
             ).scalars()
         )
         for e in stale:
-            if e.event_date is not None and e.event_date >= today and e.id not in paid_ids:
+            if e.event_date is not None and e.event_date >= month_start and e.id not in paid_ids:
                 db.delete(e)
 
     db.flush()

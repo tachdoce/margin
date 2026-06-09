@@ -194,3 +194,25 @@ def test_shift_weekends_corre_finde(db_session, user):
     entries = _entries(db_session, o.id)
     assert len(entries) == 1
     assert entries[0].event_date == date(2026, 6, 8)
+
+
+def _entries_gasto(db_session, gasto_id):
+    return list(db_session.execute(
+        select(CashFlowEntry)
+        .where(CashFlowEntry.source_type == "gasto", CashFlowEntry.source_id == gasto_id)
+        .order_by(CashFlowEntry.event_date)
+    ).scalars())
+
+
+def test_gasto_recurrente_incluye_mes_actual(db_session, user):
+    g = _gasto(db_session, user, due_day=10)
+    materialize_expense(db_session, g.id, today=date(2026, 6, 20), horizon=date(2026, 12, 31))
+    entries = _entries_gasto(db_session, g.id)
+    assert entries[0].event_date == date(2026, 6, 10)  # junio incluido (hoy 20 > día 10)
+
+
+def test_gasto_unico_mes_actual_aunque_paso(db_session, user):
+    g = _gasto(db_session, user, is_monthly_recurring=False, due_day=None, first_due_date=date(2026, 6, 3))
+    materialize_expense(db_session, g.id, today=date(2026, 6, 20), horizon=date(2026, 12, 31))
+    eds = [e.event_date for e in _entries_gasto(db_session, g.id)]
+    assert date(2026, 6, 3) in eds

@@ -65,14 +65,14 @@ def test_recurrente_genera_una_por_mes(db_session, seed_uy):
     assert entries[-1].event_date == date(2026, 12, 5)
 
 
-def test_mes_actual_se_salta_si_el_dia_ya_paso(db_session, seed_uy):
+def test_mes_actual_se_incluye_aunque_el_dia_ya_paso(db_session, seed_uy):
     income = _seed_income(db_session, payment_day=5)
-    # hoy 2026-07-10: el 5 de julio ya pasó -> julio no se materializa
+    # hoy 2026-07-10: el 5 de julio ya pasó pero el mes actual se incluye
     materialize_income(db_session, income.id, today=date(2026, 7, 10), horizon=date(2026, 12, 31))
 
     entries = _entries(db_session, income)
-    assert len(entries) == 5  # ago..dic
-    assert entries[0].event_date == date(2026, 8, 5)
+    assert len(entries) == 6  # jul..dic
+    assert entries[0].event_date == date(2026, 7, 5)
 
 
 def test_duracion_fija_genera_total_months(db_session, seed_uy):
@@ -194,3 +194,33 @@ def test_shift_weekends_produce_dia_habil(db_session, seed_uy):
     entries = _entries(db_session, income)
     assert len(entries) == 1
     assert entries[0].event_date == date(2026, 8, 17)
+
+
+def test_recurrente_incluye_mes_actual_aunque_el_dia_paso(db_session, seed_uy):
+    income = _seed_income(db_session, payment_day=5)
+    materialize_income(db_session, income.id, today=date(2026, 7, 9), horizon=date(2026, 12, 31))
+    entries = _entries(db_session, income)
+    assert entries[0].event_date == date(2026, 7, 5)  # julio incluido (hoy 9 > día 5)
+
+
+def test_fixed_term_incluye_mes_actual_excluye_pasado(db_session, seed_uy):
+    income = _seed_income(
+        db_session, is_monthly_recurring=False, payment_day=None,
+        first_income_date=date(2026, 6, 3), total_months=2,  # jun y jul
+    )
+    materialize_income(db_session, income.id, today=date(2026, 7, 9), horizon=date(2026, 12, 31))
+    eds = [e.event_date for e in _entries(db_session, income)]
+    assert date(2026, 6, 3) not in eds   # junio (mes pasado) excluido
+    assert date(2026, 7, 3) in eds       # julio (mes actual) incluido aunque el día pasó
+
+
+def test_entry_mes_actual_con_pago_real_sobrevive_reproject(db_session, seed_uy):
+    income = _seed_income(db_session, payment_day=5)
+    materialize_income(db_session, income.id, today=date(2026, 7, 9), horizon=date(2026, 12, 31))
+    jul = _entries(db_session, income)[0]
+    db_session.add(CashFlowPayment(cash_flow_entry_id=jul.id, amount=Decimal("45000.00")))  # real
+    db_session.flush()
+    income.deleted_at = datetime.now(timezone.utc)  # targets vacíos → intentaría borrar
+    db_session.flush()
+    materialize_income(db_session, income.id, today=date(2026, 7, 9), horizon=date(2026, 12, 31))
+    assert db_session.get(CashFlowEntry, jul.id) is not None  # protegida por pago real
