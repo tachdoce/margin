@@ -50,6 +50,10 @@ class ErrorCode(Enum):
     obligation_has_children = (409, "Borrá primero las obligaciones derivadas de esta.")
     obligation_has_payments = (409, "No se puede borrar una obligación con pagos confirmados.")
     obligation_has_no_findings = (409, "Esta obligación no tiene observaciones para reconocer.")
+    card_network_invalid = (422, "Red de tarjeta no válida.")
+    statement_incomplete = (422, "El resumen quedaría incompleto.")
+    item_type_invalid = (422, "Tipo de ítem no válido.")
+    item_incomplete = (422, "El ítem quedaría incompleto.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

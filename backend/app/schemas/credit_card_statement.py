@@ -93,7 +93,7 @@ class StagingStatementItemOut(BaseModel):
         )
 
 
-class StagingStatementOut(BaseModel):
+class StagingMadreOut(BaseModel):
     id: uuid.UUID
     institution_id: int | None
     card_network_id: int | None
@@ -111,12 +111,9 @@ class StagingStatementOut(BaseModel):
     rates_add_vat: bool | None
     review_findings: list[str]
     is_ready: bool
-    items: list[StagingStatementItemOut]
 
     @classmethod
-    def from_model(
-        cls, m: StagingCreditCard, items: list[StagingCreditCardItem]
-    ) -> "StagingStatementOut":
+    def from_model(cls, m: StagingCreditCard) -> "StagingMadreOut":
         return cls(
             id=m.id,
             institution_id=m.institution_id,
@@ -135,5 +132,45 @@ class StagingStatementOut(BaseModel):
             rates_add_vat=m.rates_add_vat,
             review_findings=json.loads(m.review_findings),
             is_ready=m.is_ready,
+        )
+
+
+class StagingStatementOut(StagingMadreOut):
+    items: list[StagingStatementItemOut]
+
+    @classmethod
+    def from_model(
+        cls, m: StagingCreditCard, items: list[StagingCreditCardItem]
+    ) -> "StagingStatementOut":
+        base = StagingMadreOut.from_model(m)
+        return cls(
+            **base.model_dump(),
             items=[StagingStatementItemOut.from_model(it) for it in items],
         )
+
+
+class StagingMadreUpdate(BaseModel):
+    institution_id: int | None = None
+    card_network_id: int | None = None
+    closing_date: _date | None = None
+    due_date: _date | None = None
+    current_limit: Decimal | None = None
+    total_local: Decimal | None = None
+    total_usd: Decimal | None = None
+    minimum_payment_local: Decimal | None = None
+    minimum_payment_usd: Decimal | None = None
+    financing_rate_local: Decimal | None = None
+    overdue_rate_local: Decimal | None = None
+    financing_rate_usd: Decimal | None = None
+    overdue_rate_usd: Decimal | None = None
+    rates_add_vat: bool | None = None
+
+
+class StagingItemUpdate(BaseModel):
+    charge_date: _date | None = None
+    description: str | None = None
+    amount: Decimal | None = None
+    currency_id: int | None = None
+    item_type_id: int | None = None
+    current_installment: int | None = None
+    total_installments: int | None = None

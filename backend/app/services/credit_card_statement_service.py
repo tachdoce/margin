@@ -1,7 +1,11 @@
+import uuid
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError, ErrorCode
 from app.models.credit_card import CreditCard
+from app.models.credit_card_item_type import CreditCardItemType
 from app.models.credit_card_network import CreditCardNetwork
 from app.models.credit_card_purchase import CreditCardPurchase
 from app.models.currency import Currency
@@ -9,8 +13,9 @@ from app.models.institution import Institution
 from app.models.staging_credit_card import StagingCreditCard
 from app.models.staging_credit_card_item import StagingCreditCardItem
 from app.models.user import User
-from app.schemas.credit_card_statement import StagingStatementCreate
+from app.schemas.credit_card_statement import StagingItemUpdate, StagingMadreUpdate, StagingStatementCreate
 from app.services.review.staging_credit_cards import review_staging_credit_card
+from app.services.scoping import require_user_currency
 
 
 def _resolve_institution(db: Session, country_code: str, name: str | None) -> int | None:
@@ -149,3 +154,120 @@ def create_staging_statement(
     db.commit()
     db.refresh(madre)
     return madre, items
+
+
+def update_staging_madre(db: Session, user: User, payload: StagingMadreUpdate) -> StagingCreditCard:
+    madre = db.execute(
+        select(StagingCreditCard).where(StagingCreditCard.user_id == user.id).with_for_update()
+    ).scalar_one_or_none()
+    if madre is None:
+        raise AppError(ErrorCode.not_found)
+
+    required = (
+        payload.institution_id, payload.card_network_id, payload.closing_date, payload.due_date,
+        payload.current_limit, payload.total_local, payload.total_usd,
+        payload.minimum_payment_local, payload.minimum_payment_usd, payload.rates_add_vat,
+    )
+    if any(v is None for v in required):
+        raise AppError(ErrorCode.statement_incomplete)
+
+    inst = db.get(Institution, payload.institution_id)
+    if inst is None or inst.country_code != user.country_code:
+        raise AppError(ErrorCode.institution_invalid, field="institution_id")
+    net = db.get(CreditCardNetwork, payload.card_network_id)
+    if net is None or net.country_code != user.country_code:
+        raise AppError(ErrorCode.card_network_invalid, field="card_network_id")
+
+    if payload.current_limit <= 0:
+        raise AppError(ErrorCode.amount_invalid, field="current_limit")
+    for f in ("total_local", "total_usd", "minimum_payment_local", "minimum_payment_usd"):
+        if getattr(payload, f) < 0:
+            raise AppError(ErrorCode.amount_invalid, field=f)
+
+    prev_institution_id = madre.institution_id
+    prev_card_network_id = madre.card_network_id
+
+    madre.institution_id = payload.institution_id
+    madre.card_network_id = payload.card_network_id
+    madre.closing_date = payload.closing_date
+    madre.due_date = payload.due_date
+    madre.current_limit = payload.current_limit
+    madre.total_local = payload.total_local
+    madre.total_usd = payload.total_usd
+    madre.minimum_payment_local = payload.minimum_payment_local
+    madre.minimum_payment_usd = payload.minimum_payment_usd
+    madre.financing_rate_local = payload.financing_rate_local
+    madre.overdue_rate_local = payload.overdue_rate_local
+    madre.financing_rate_usd = payload.financing_rate_usd
+    madre.overdue_rate_usd = payload.overdue_rate_usd
+    madre.rates_add_vat = payload.rates_add_vat
+    db.flush()
+
+    # herencia solo si recién ahora se resolvió la tarjeta (alguno estaba NULL antes; ambos no-NULL ahora)
+    if prev_institution_id is None or prev_card_network_id is None:
+        inherited = _inherited_types(db, user.id, payload.institution_id, payload.card_network_id)
+        if inherited:
+            null_items = db.execute(
+                select(StagingCreditCardItem).where(
+                    StagingCreditCardItem.staging_credit_card_id == madre.id,
+                    StagingCreditCardItem.item_type_id.is_(None),
+                )
+            ).scalars().all()
+            for it in null_items:
+                if it.description in inherited:
+                    it.item_type_id = inherited[it.description]
+            db.flush()
+
+    review_staging_credit_card(db, madre.id)
+    db.commit()
+    db.refresh(madre)
+    return madre
+
+
+def update_staging_item(
+    db: Session, user: User, item_id: uuid.UUID, payload: StagingItemUpdate
+) -> StagingCreditCardItem:
+    item = db.execute(
+        select(StagingCreditCardItem)
+        .join(StagingCreditCard, StagingCreditCard.id == StagingCreditCardItem.staging_credit_card_id)
+        .where(StagingCreditCardItem.id == item_id, StagingCreditCard.user_id == user.id)
+        .with_for_update(of=StagingCreditCardItem)
+    ).scalar_one_or_none()
+    if item is None:
+        raise AppError(ErrorCode.not_found)
+
+    if (
+        payload.charge_date is None
+        or payload.description is None
+        or payload.description.strip() == ""
+        or payload.amount is None
+        or payload.currency_id is None
+        or payload.item_type_id is None
+    ):
+        raise AppError(ErrorCode.item_incomplete)
+
+    currency = require_user_currency(db, user, payload.currency_id)  # 422 currency_not_available si país/inexistente
+    if not currency.allowed_in_credit_card:
+        raise AppError(ErrorCode.currency_not_available, field="currency_id")
+
+    if payload.amount <= 0:
+        raise AppError(ErrorCode.amount_invalid, field="amount")
+
+    if db.get(CreditCardItemType, payload.item_type_id) is None:
+        raise AppError(ErrorCode.item_type_invalid, field="item_type_id")
+
+    ci, ti = payload.current_installment, payload.total_installments
+    if not (ci is None and ti is None):
+        if ci is None or ti is None or ci < 1 or ti < 1 or ci > ti:
+            raise AppError(ErrorCode.installments_invalid)
+
+    item.charge_date = payload.charge_date
+    item.description = payload.description
+    item.amount = payload.amount
+    item.currency_id = payload.currency_id
+    item.item_type_id = payload.item_type_id
+    item.current_installment = ci
+    item.total_installments = ti
+    db.commit()
+    db.refresh(item)
+    return item

@@ -11,6 +11,7 @@ from app.models.credit_card_purchase import CreditCardPurchase
 from app.models.currency import Currency
 from app.models.institution import Institution
 from app.models.staging_credit_card import StagingCreditCard
+from app.models.staging_credit_card_item import StagingCreditCardItem
 from app.models.user import User
 
 from tests.test_credit_cards_model import _card_kwargs
@@ -25,6 +26,7 @@ def cc_catalog(db_session, seed_uy_currency):
     # seed_uy_currency siembra UY + Peso(1). Agregamos USD + emisor + red + tipos.
     db_session.add_all([
         Currency(id=3, country_code="UY", name="Dólar", is_legal_tender=False, allowed_in_credit_card=True),
+        Currency(id=4, country_code="UY", name="Unidad Indexada", is_legal_tender=False, allowed_in_credit_card=False),
         Institution(id=1, country_code="UY", name="Scotiabank", visible=True),
         CreditCardNetwork(id=1, country_code="UY", code="amex", name="Amex"),
         CreditCardItemType(id=1, code="compra", name="Compra", description="x"),
@@ -190,3 +192,235 @@ def test_no_inheritance_without_resolved_card(client, cc_catalog, db_session):
 def test_401_without_token(client, cc_catalog):
     r = client.post("/credit-card-statements", json=_payload())
     assert r.status_code == 401
+
+
+def _madre_body(**over):
+    body = {
+        "institution_id": 1, "card_network_id": 1,
+        "closing_date": CLOSING, "due_date": DUE, "current_limit": 180000.00,
+        "total_local": 7991.28, "total_usd": 65.35,
+        "minimum_payment_local": 600.00, "minimum_payment_usd": 0.00,
+        "financing_rate_local": 69.98, "overdue_rate_local": 81.27,
+        "financing_rate_usd": 13.50, "overdue_rate_usd": 15.68,
+        "rates_add_vat": True,
+    }
+    body.update(over)
+    return body
+
+
+def _item_body(**over):
+    body = {
+        "charge_date": "2026-05-03", "description": "MERPAGO*ALGO",
+        "amount": 432.10, "currency_id": 1, "item_type_id": 1,
+        "current_installment": 2, "total_installments": 6,
+    }
+    body.update(over)
+    return body
+
+
+def _post_staging(client, headers, **over):
+    return client.post("/credit-card-statements", json=_payload(**over), headers=headers).json()
+
+
+# ---- PUT madre ----
+
+def test_put_madre_200(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(), headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["institution_id"] == 1
+    assert body["total_local"] == "7991.28"
+    assert "items" not in body  # respuesta madre-only
+    assert isinstance(body["review_findings"], list)
+
+
+def test_put_madre_404_no_staging(client, cc_catalog):
+    headers = _auth(client)
+    r = client.put("/credit-card-statements", json=_madre_body(), headers=headers)
+    assert r.status_code == 404
+    assert r.json()["code"] == "not_found"
+
+
+def test_put_madre_statement_incomplete(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(total_local=None), headers=headers)
+    assert r.status_code == 422
+    assert r.json()["code"] == "statement_incomplete"
+
+
+def test_put_madre_institution_invalid(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(institution_id=999), headers=headers)
+    assert r.status_code == 422
+    assert r.json()["code"] == "institution_invalid"
+
+
+def test_put_madre_card_network_invalid(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(card_network_id=999), headers=headers)
+    assert r.status_code == 422
+    assert r.json()["code"] == "card_network_invalid"
+
+
+def test_put_madre_amount_invalid(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(current_limit=0), headers=headers)
+    assert r.status_code == 422
+    assert r.json()["code"] == "amount_invalid"
+    r2 = client.put("/credit-card-statements", json=_madre_body(total_local=-1), headers=headers)
+    assert r2.json()["code"] == "amount_invalid"
+
+
+def test_put_madre_rates_null_ok(client, cc_catalog):
+    headers = _auth(client)
+    _post_staging(client, headers)
+    r = client.put("/credit-card-statements", json=_madre_body(
+        financing_rate_local=None, overdue_rate_local=None,
+        financing_rate_usd=None, overdue_rate_usd=None,
+    ), headers=headers)
+    assert r.status_code == 200
+    assert r.json()["financing_rate_local"] is None
+
+
+def test_put_madre_inheritance_on_resolve(client, cc_catalog, db_session):
+    headers = _auth(client)
+    # POST con emisor/red que NO resuelven -> institution/network NULL, GOOGLE item type NULL
+    _post_staging(client, headers, general_data={
+        "issuer": "Desconocido", "card_network": "Nope",
+        "closing_date": CLOSING, "due_date": DUE, "current_limit": 180000.00,
+    })
+    # existe una tarjeta del usuario + una compra GOOGLE clasificada (tipo 3)
+    user = db_session.execute(select(User)).scalars().first()
+    card = CreditCard(**_card_kwargs(user))
+    db_session.add(card)
+    db_session.flush()
+    db_session.add(CreditCardPurchase(
+        credit_card_id=card.id, description="GOOGLE *COM PULSO PULS", charge_date=date(2026, 4, 29),
+        amount=Decimal("69.99"), currency_id=3, total_installments=None, item_type_id=3,
+        last_statement_closing_date=date(2026, 4, 13),
+    ))
+    db_session.flush()
+    # PUT resuelve emisor+red -> hereda el tipo a los ítems en NULL
+    r = client.put("/credit-card-statements", json=_madre_body(), headers=headers)
+    assert r.status_code == 200
+    google = db_session.execute(
+        select(StagingCreditCardItem).where(StagingCreditCardItem.description == "GOOGLE *COM PULSO PULS")
+    ).scalars().first()
+    assert google.item_type_id == 3
+
+
+def test_put_madre_no_reinheritance_when_already_resolved(client, cc_catalog, db_session):
+    headers = _auth(client)
+    _post_staging(client, headers)  # emisor+red resuelven en el POST (institution 1, network 1)
+    # recién ahora creamos tarjeta + compra GOOGLE: no debe heredarse en el PUT (ya estaba resuelta)
+    user = db_session.execute(select(User)).scalars().first()
+    card = CreditCard(**_card_kwargs(user))
+    db_session.add(card)
+    db_session.flush()
+    db_session.add(CreditCardPurchase(
+        credit_card_id=card.id, description="GOOGLE *COM PULSO PULS", charge_date=date(2026, 4, 29),
+        amount=Decimal("69.99"), currency_id=3, total_installments=None, item_type_id=3,
+        last_statement_closing_date=date(2026, 4, 13),
+    ))
+    db_session.flush()
+    client.put("/credit-card-statements", json=_madre_body(), headers=headers)
+    google = db_session.execute(
+        select(StagingCreditCardItem).where(StagingCreditCardItem.description == "GOOGLE *COM PULSO PULS")
+    ).scalars().first()
+    assert google.item_type_id is None  # no se re-heredó
+
+
+# ---- PUT ítem ----
+
+def _first_item_id(post_body):
+    return post_body["items"][0]["id"]
+
+
+def test_put_item_200(client, cc_catalog):
+    headers = _auth(client)
+    body = _post_staging(client, headers)
+    item_id = _first_item_id(body)
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(), headers=headers)
+    assert r.status_code == 200
+    out = r.json()
+    assert out["missing_fields"] == []
+    assert out["amount"] == "432.10"
+    assert out["item_type_id"] == 1
+
+
+def test_put_item_404_missing(client, cc_catalog):
+    import uuid as _uuid
+    headers = _auth(client)
+    r = client.put(f"/credit-card-statements/items/{_uuid.uuid4()}", json=_item_body(), headers=headers)
+    assert r.status_code == 404
+
+
+def test_put_item_404_other_user(client, cc_catalog):
+    headers_a = _auth(client, email="a@b.com")
+    body = _post_staging(client, headers_a)
+    item_id = _first_item_id(body)
+    headers_b = _auth(client, email="b@b.com")
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(), headers=headers_b)
+    assert r.status_code == 404
+
+
+def test_put_item_incomplete(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(amount=None), headers=headers)
+    assert r.json()["code"] == "item_incomplete"
+    r2 = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(description="   "), headers=headers)
+    assert r2.json()["code"] == "item_incomplete"
+
+
+def test_put_item_currency_not_available(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(currency_id=4), headers=headers)
+    assert r.json()["code"] == "currency_not_available"
+
+
+def test_put_item_amount_invalid(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(amount=0), headers=headers)
+    assert r.json()["code"] == "amount_invalid"
+
+
+def test_put_item_type_invalid(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}", json=_item_body(item_type_id=999), headers=headers)
+    assert r.json()["code"] == "item_type_invalid"
+
+
+def test_put_item_installments_invalid(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}",
+                   json=_item_body(current_installment=2, total_installments=None), headers=headers)
+    assert r.json()["code"] == "installments_invalid"
+    r2 = client.put(f"/credit-card-statements/items/{item_id}",
+                    json=_item_body(current_installment=5, total_installments=3), headers=headers)
+    assert r2.json()["code"] == "installments_invalid"
+
+
+def test_put_item_one_payment_ok(client, cc_catalog):
+    headers = _auth(client)
+    item_id = _first_item_id(_post_staging(client, headers))
+    r = client.put(f"/credit-card-statements/items/{item_id}",
+                   json=_item_body(current_installment=None, total_installments=None), headers=headers)
+    assert r.status_code == 200
+    assert r.json()["current_installment"] is None
+
+
+def test_put_401(client, cc_catalog):
+    assert client.put("/credit-card-statements", json=_madre_body()).status_code == 401
+    import uuid as _uuid
+    assert client.put(f"/credit-card-statements/items/{_uuid.uuid4()}", json=_item_body()).status_code == 401
