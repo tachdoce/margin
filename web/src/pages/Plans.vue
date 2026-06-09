@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const router = useRouter()
 
@@ -62,7 +63,7 @@ function currencyName(id) {
 
 function goalSummary(plan) {
   if (plan.goal_kind === 'ahorro_total') {
-    return `Objetivo: ahorro total de ${plan.goal_amount} ${currencyName(plan.goal_currency_id)}`
+    return `Objetivo: ahorro total de ${formatMoney(plan.goal_amount, plan.goal_currency_id)}`
   }
   return 'Sin objetivo'
 }
@@ -208,7 +209,7 @@ async function remove(plan) {
             <span v-if="plan.is_default" class="badge">default</span>
             <span v-if="plan.id === activeId" class="badge">activo</span>
           </span>
-          <span class="income-amount">{{ plan.dial_amount }} {{ currencyName(plan.dial_currency_id) }}</span>
+          <span class="income-amount">{{ formatMoney(plan.dial_amount, plan.dial_currency_id) }}</span>
         </div>
         <p class="muted">{{ goalSummary(plan) }}</p>
         <div class="income-actions">

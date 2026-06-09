@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const expenses = ref([])
 const catalogs = ref({ obligation_types: [], priority_levels: [], currencies: [] })
@@ -270,7 +271,7 @@ async function remove(exp) {
             {{ exp.description }}
             <span v-if="exp.is_closed" class="badge">cerrado</span>
           </span>
-          <span class="income-amount">{{ exp.amount }} {{ currencyName(exp.currency_id) }}</span>
+          <span class="income-amount">{{ formatMoney(exp.amount, exp.currency_id) }}</span>
         </div>
         <p class="muted">{{ typeName(exp.obligation_type_id) }} · {{ formSummary(exp) }}</p>
         <div class="income-actions">

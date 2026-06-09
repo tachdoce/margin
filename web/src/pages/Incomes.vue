@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const incomes = ref([])
 const catalogs = ref({ income_types: [], currencies: [] })
@@ -254,7 +255,7 @@ async function reactivate(inc) {
             {{ inc.description }}
             <span v-if="inc.is_deleted" class="badge">borrado</span>
           </span>
-          <span class="income-amount">{{ inc.amount }} {{ currencyName(inc.currency_id) }}</span>
+          <span class="income-amount">{{ formatMoney(inc.amount, inc.currency_id) }}</span>
         </div>
         <p class="muted">{{ typeName(inc.income_type_id) }} · {{ formSummary(inc) }}</p>
         <div class="income-actions">

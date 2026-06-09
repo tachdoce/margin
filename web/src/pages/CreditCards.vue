@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const catalogs = ref({
   institutions: [],
@@ -472,7 +473,7 @@ async function toggleItems(card, st) {
           <li v-for="it in staging.items" :key="it.id" class="item-row" @click="openItem(it)">
             <span class="item-desc">{{ it.description || '(sin descripción)' }}</span>
             <span class="item-meta">
-              {{ it.amount ?? '—' }} {{ it.currency_id ? currencyName(it.currency_id) : '' }}
+              {{ it.amount == null ? '—' : formatMoney(it.amount, it.currency_id) }}
               <span v-if="it.missing_fields.length" class="badge">incompleto</span>
             </span>
           </li>
@@ -550,7 +551,7 @@ async function toggleItems(card, st) {
             </button>
             <ul v-if="history[card.id].items[st.id]">
               <li v-for="it in history[card.id].items[st.id]" :key="it.id" class="muted">
-                {{ it.charge_date }} · {{ it.description }} · {{ it.amount }} {{ currencyName(it.currency_id) }}
+                {{ it.charge_date }} · {{ it.description }} · {{ formatMoney(it.amount, it.currency_id) }}
                 <span v-if="it.total_installments">(cuota {{ it.current_installment }}/{{ it.total_installments }})</span>
                 · {{ itemTypeName(it.item_type_id) }}
               </li>

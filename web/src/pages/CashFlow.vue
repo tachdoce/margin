@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const catalogs = ref({ currencies: [] })
 const plans = ref([])
@@ -199,9 +200,9 @@ async function delPay(p) {
             <div v-for="e in m.incomes" :key="e.id" class="entry">
               <div class="income-head">
                 <span class="income-desc">{{ e.description }} · {{ e.event_date }}</span>
-                <span class="income-amount">{{ e.amount }} {{ currencyName(e.currency_id) }}</span>
+                <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
               </div>
-              <p class="muted">cobrado {{ e.paid_real }} · planificado {{ e.planned_amount }}</p>
+              <p class="muted">cobrado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
               <button class="ghost" type="button" @click="openPayments(e)">Cobros</button>
             </div>
           </div>
@@ -211,9 +212,9 @@ async function delPay(p) {
             <div v-for="e in m.expenses" :key="e.id" class="entry">
               <div class="income-head">
                 <span class="income-desc">{{ e.description }} · {{ e.event_date }}</span>
-                <span class="income-amount">{{ e.amount }} {{ currencyName(e.currency_id) }}</span>
+                <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
               </div>
-              <p class="muted">pagado {{ e.paid_real }} · planificado {{ e.planned_amount }}</p>
+              <p class="muted">pagado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
               <div v-if="editAmountId === e.id" class="field-row">
                 <input v-model="amountDraft" type="text" inputmode="decimal" />
                 <button class="primary" type="button" @click="saveAmount(e)">Guardar</button>
@@ -236,9 +237,9 @@ async function delPay(p) {
         <div v-for="e in timeline.open_debts" :key="e.id" class="entry">
           <div class="income-head">
             <span class="income-desc">{{ e.description }}</span>
-            <span class="income-amount">{{ e.amount }} {{ currencyName(e.currency_id) }}</span>
+            <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
           </div>
-          <p class="muted">pagado {{ e.paid_real }} · planificado {{ e.planned_amount }}</p>
+          <p class="muted">pagado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
           <button class="ghost" type="button" @click="openPayments(e)">Pagos</button>
         </div>
       </div>
@@ -268,7 +269,7 @@ async function delPay(p) {
             </template>
             <template v-else>
               <span class="item-desc">
-                {{ p.amount }}
+                {{ formatMoney(p.amount, payEntry.currency_id) }}
                 <span class="badge">{{ p.is_planned ? 'planificado' : 'real' }}</span>
                 <span v-if="p.planned_date" class="muted">{{ p.planned_date }}</span>
                 <span v-if="p.note" class="muted">· {{ p.note }}</span>

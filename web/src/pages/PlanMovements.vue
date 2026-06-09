@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
+import { formatMoney } from '../format'
 
 const route = useRoute()
 const planId = route.params.id
@@ -284,7 +285,7 @@ async function remove(m) {
             {{ m.description || kindLabel(m.kind) }}
             <span class="badge">{{ kindLabel(m.kind) }}</span>
           </span>
-          <span class="income-amount">{{ m.principal_amount }} {{ currencyName(m.currency_id) }}</span>
+          <span class="income-amount">{{ formatMoney(m.principal_amount, m.currency_id) }}</span>
         </div>
         <p class="muted">{{ movementSummary(m) }}</p>
         <div class="income-actions">
