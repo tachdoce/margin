@@ -74,6 +74,7 @@ class ErrorCode(Enum):
     source_id_required = (422, "Falta indicar la fuente.")
     source_not_editable = (422, "Este tipo de movimiento no se puede editar.")
     entry_not_editable = (409, "No se puede editar un mes ya pasado.")
+    usage_preference_invalid = (422, "Preferencia de uso no válida.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code

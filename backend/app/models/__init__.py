@@ -22,3 +22,4 @@ from app.models.plan_movement import PlanMovement  # noqa: F401
 from app.models.obligation import Obligation  # noqa: F401
 from app.models.cash_flow_entry import CashFlowEntry  # noqa: F401
 from app.models.cash_flow_payment import CashFlowPayment  # noqa: F401
+from app.models.financing import Financing  # noqa: F401
