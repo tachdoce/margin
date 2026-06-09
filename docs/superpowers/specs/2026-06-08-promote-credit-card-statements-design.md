@@ -74,7 +74,8 @@ Resolver la tarjeta existente (§5.1): primero la **vigente** (`deleted_at IS NU
   `is_ready=False`).
 - **Existente (vigente o soft-deleted):** `deleted_at = None` (reactiva si estaba borrada), `current_limit`
   del staging, y cada tasa/`rates_add_vat` **solo si vino no-NULL** (NULL conserva el valor vigente).
-  `closing_day` y las columnas del ciclo **no se tocan**.
+  `closing_day` y las columnas del ciclo **no se tocan**. Además, `updated_at = now()` **explícito** (ver §6):
+  garantiza `created_at != updated_at` para que el reviewer no la confunda con una tarjeta nueva.
 
 ### Paso 2 — INSERT `credit_card_statements`
 
@@ -136,6 +137,11 @@ Se resuelve una vez por corrida: `credit_card_item_types.id` con `code = 'suscri
   del Paso 2 en todos los casos (decisión del usuario). El reviewer se apoya en `created_at == updated_at`:
   nueva → iguales (misma transacción) → `closing_day_inferred`; existente → el UPDATE del Paso 1 bumpea
   `updated_at` → difieren → rama `closing_day_changed`.
+- **`updated_at = now()` explícito al actualizar/reactivar (decisión del usuario):** si los valores del staging
+  fueran idénticos a los de la tarjeta, SQLAlchemy no emitiría UPDATE y el `onupdate=now()` no dispararía,
+  dejando `updated_at == created_at` en una tarjeta creada en un promote previo y nunca editada — el reviewer la
+  trataría como **nueva** y emitiría `closing_day_inferred` por error. Setear `updated_at = now()` explícito en
+  la rama existente garantiza `created_at != updated_at` y que el reviewer tome la rama `closing_day_changed`.
 - **Guarda de completitud de la madre (cierra un gap de Notion):** el promote (según Notion) solo chequea
   `is_ready`, pero `is_ready=true` no implica madre completa — un acknowledge sobre un finding deja
   `is_ready=true` aunque falten campos (p.ej. `closing_date`), y derivar el período de un `closing_date` NULL
@@ -189,6 +195,10 @@ vía `db_session`. `today` real no afecta (el promote no usa fechas-vs-hoy salvo
   `cash_flow_entries` del período).
 - **`closing_day_changed`:** segundo período con `closing_date.day` lejos (>4) del `closing_day` →
   `review_findings == ["closing_day_changed"]`, `is_ready false`, motor no-op.
+- **Existente con valores idénticos no se trata como nueva:** tarjeta creada en un promote previo y nunca
+  editada (`created_at == updated_at`), segundo período con `current_limit`/tasas idénticos al staging → el
+  `updated_at = now()` explícito hace que `created_at != updated_at` → el reviewer **no** emite
+  `closing_day_inferred` (rama existente).
 - **Reactivación de soft-deleted:** una `credit_cards` soft-deleted del mismo emisor+red → el promote la
   reactiva (`deleted_at NULL`) en vez de crear otra; no viola el índice.
 - **Tasas no pisan en update:** tarjeta existente, staging con una tasa NULL → conserva la vigente.
