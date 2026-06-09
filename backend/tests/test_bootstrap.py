@@ -26,7 +26,8 @@ def _seed_catalogs(db_session):
     ])
     db_session.flush()
     db_session.add_all([
-        Currency(id=1, country_code="UY", name="Peso", is_legal_tender=True, allowed_in_credit_card=True),
+        Currency(id=1, country_code="UY", name="Peso", is_legal_tender=True, allowed_in_credit_card=True,
+                 symbol="$", display_decimals=0),
         Currency(id=99, country_code="AR", name="Peso AR", is_legal_tender=True, allowed_in_credit_card=False),
         IncomeType(id=1, code="sueldo", name="Sueldo", visible=True),
         IncomeType(id=2, code="oculto", name="Oculto", visible=False),
@@ -66,6 +67,8 @@ def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
     assert {c["name"] for c in catalogs["currencies"]} == {"Peso"}
     peso = next(c for c in catalogs["currencies"] if c["name"] == "Peso")
     assert peso["allowed_in_credit_card"] is True  # expuesto para los selects de tarjetas
+    assert peso["symbol"] == "$"
+    assert peso["display_decimals"] == 0
     assert {i["name"] for i in catalogs["institutions"]} == {"BROU"}
     # priority_levels: todos (incluye el nivel 1)
     levels = {p["level"] for p in catalogs["priority_levels"]}

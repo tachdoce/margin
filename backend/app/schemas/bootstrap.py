@@ -10,6 +10,8 @@ class CurrencyOut(_Read):
     name: str
     is_legal_tender: bool
     allowed_in_credit_card: bool
+    symbol: str
+    display_decimals: int
 
 
 class ObligationTypeOut(_Read):
