@@ -295,6 +295,7 @@ function startEditCard(card) {
     institution_id: card.institution_id,
     card_network_id: card.card_network_id,
     closing_day: card.closing_day,
+    due_day: card.due_day,
   }
 }
 function cancelEditCard(card) {
@@ -308,6 +309,7 @@ async function saveCard(card) {
       institution_id: Number(f.institution_id),
       card_network_id: Number(f.card_network_id),
       closing_day: Number(f.closing_day),
+      due_day: Number(f.due_day),
     })
     delete cardEdits[card.id]
     await loadCards()
@@ -493,7 +495,7 @@ async function toggleItems(card, st) {
             <span v-if="card.is_deleted" class="badge">borrada</span>
             <span v-else-if="!card.is_ready" class="badge">en revisión</span>
           </span>
-          <span class="income-amount">cierra {{ card.closing_day }}</span>
+          <span class="income-amount">cierra {{ card.closing_day }} · vence {{ card.due_day }}</span>
         </div>
         <p class="muted">
           Límite {{ card.current_limit }} · fin {{ card.financing_rate_local }}/{{ card.financing_rate_usd }} ·
@@ -518,6 +520,7 @@ async function toggleItems(card, st) {
             </select>
           </div>
           <div class="field"><label>Día de cierre</label><input v-model="cardEdits[card.id].closing_day" type="number" min="1" max="31" /></div>
+          <div class="field"><label>Día de vencimiento</label><input v-model="cardEdits[card.id].due_day" type="number" min="1" max="31" /></div>
           <div class="income-actions">
             <button class="primary" type="button" @click="saveCard(card)">Guardar</button>
             <button class="ghost" type="button" @click="cancelEditCard(card)">Cancelar</button>

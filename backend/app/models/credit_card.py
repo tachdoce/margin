@@ -34,6 +34,7 @@ class CreditCard(Base):
     )
     current_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     closing_day: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    due_day: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     financing_rate_local: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     overdue_rate_local: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     financing_rate_usd: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)

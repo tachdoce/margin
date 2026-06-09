@@ -27,6 +27,7 @@ def upgrade() -> None:
     sa.Column('card_network_id', sa.SmallInteger(), nullable=False),
     sa.Column('current_limit', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('closing_day', sa.SmallInteger(), nullable=False),
+    sa.Column('due_day', sa.SmallInteger(), nullable=False),
     sa.Column('financing_rate_local', sa.Numeric(precision=5, scale=2), nullable=False),
     sa.Column('overdue_rate_local', sa.Numeric(precision=5, scale=2), nullable=False),
     sa.Column('financing_rate_usd', sa.Numeric(precision=5, scale=2), nullable=False),

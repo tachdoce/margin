@@ -111,6 +111,23 @@ def test_patch_closing_day_changed(client, db_session, cc_full):
     assert r.json()["is_ready"] is False
 
 
+def test_patch_due_day_ok(client, db_session, cc_full):
+    headers = _auth(client)
+    user = _last_user(db_session)
+    card = _make_card(db_session, user, created_at=T1)
+    r = client.patch(f"/credit-cards/{card.id}", json={"due_day": 20}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["due_day"] == 20
+
+
+def test_patch_due_day_invalid(client, db_session, cc_full):
+    headers = _auth(client)
+    user = _last_user(db_session)
+    card = _make_card(db_session, user, created_at=T1)
+    assert client.patch(f"/credit-cards/{card.id}", json={"due_day": 0}, headers=headers).json()["code"] == "due_day_invalid"
+    assert client.patch(f"/credit-cards/{card.id}", json={"due_day": 32}, headers=headers).json()["code"] == "due_day_invalid"
+
+
 def test_patch_401(client, cc_full):
     import uuid
     assert client.patch(f"/credit-cards/{uuid.uuid4()}", json={"closing_day": 15}).status_code == 401

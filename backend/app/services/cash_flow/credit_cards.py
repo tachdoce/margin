@@ -187,8 +187,13 @@ def materialize_credit_card(
         rate_pair = {local_id: (fin_local, over_local), usd_id: (fin_usd, over_usd)}
         for (y, m, cid), amount in _projection_sums(db, statement, horizon).items():
             fin, over = rate_pair.get(cid, (None, None))
+            # vence el mismo mes del cierre si due_day >= closing_day; si no, el mes siguiente
+            if card.due_day >= card.closing_day:
+                dy, dm = y, m
+            else:
+                dy, dm = _add_months(y, m, 1)
             targets[(y, m, cid)] = dict(
-                event_date=compute_event_date(y, m, card.closing_day, False),
+                event_date=compute_event_date(dy, dm, card.due_day, False),
                 amount=amount,
                 financing_rate=fin,
                 overdue_rate=over,

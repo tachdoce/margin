@@ -82,6 +82,7 @@ def test_promote_new_card(client, cc_catalog, db_session):
     assert len(cards) == 1
     card = cards[0]
     assert card.closing_day == 13
+    assert card.due_day == 25  # del día de staging.due_date
     st = db_session.execute(select(CreditCardStatement).where(CreditCardStatement.credit_card_id == card.id)).scalars().all()
     assert len(st) == 1 and (st[0].issue_year, st[0].issue_month) == (2026, 5)
     # staging borrado

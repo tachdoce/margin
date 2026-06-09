@@ -256,12 +256,13 @@ def test_grouping_sums_same_month_currency(db_session, user_uy):
     assert _by_key(db_session, card)[(2026, 6, 1)].amount == Decimal("150.00")
 
 
-def test_closing_day_clamped_in_projection(db_session, user_uy, sub_type):
-    card = _make_card(db_session, user_uy, closing_day=31)
+def test_due_day_clamped_in_projection(db_session, user_uy, sub_type):
+    card = _make_card(db_session, user_uy, closing_day=13, due_day=31)
     st = _make_statement(db_session, card, total_usd=Decimal("0.00"))
-    _add_item(db_session, st, amount=Decimal("69.99"), currency_id=3, item_type_id=sub_type)
+    _add_item(db_session, st, amount=Decimal("69.99"), currency_id=1, item_type_id=sub_type)
     materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 6, 30))
-    assert _by_key(db_session, card)[(2026, 6, 3)].event_date == date(2026, 6, 30)  # junio no tiene 31
+    # due_day 31 en junio (30 días) -> último día del mes
+    assert _by_key(db_session, card)[(2026, 6, 1)].event_date == date(2026, 6, 30)
 
 
 def test_projection_becomes_real(db_session, user_uy, sub_type):
@@ -303,3 +304,22 @@ def test_reprojection_deletes_stale_future(db_session, user_uy):
     materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
     keys = _by_key(db_session, card)
     assert (2026, 6, 1) not in keys and (2026, 7, 1) not in keys  # proyecciones futuras borradas
+
+
+def test_projection_due_day_same_month(db_session, user_uy):
+    card = _make_card(db_session, user_uy, closing_day=13, due_day=25)  # 25 >= 13 -> mismo mes
+    st = _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_item(db_session, st, amount=Decimal("100.00"), currency_id=1, item_type_id=1,
+              current_installment=3, total_installments=4)  # falta 1 cuota -> junio
+    materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
+    assert _by_key(db_session, card)[(2026, 6, 1)].event_date == date(2026, 6, 25)
+
+
+def test_projection_due_day_next_month(db_session, user_uy):
+    card = _make_card(db_session, user_uy, closing_day=28, due_day=5)  # 5 < 28 -> mes siguiente
+    st = _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_item(db_session, st, amount=Decimal("100.00"), currency_id=1, item_type_id=1,
+              current_installment=3, total_installments=4)  # cierre proyectado junio -> vence julio
+    materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
+    entry = _by_key(db_session, card)[(2026, 6, 1)]  # issue = mes de cierre (junio)
+    assert entry.event_date == date(2026, 7, 5)       # vence el mes siguiente

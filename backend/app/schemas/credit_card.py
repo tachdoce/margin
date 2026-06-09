@@ -16,6 +16,7 @@ class CreditCardOut(BaseModel):
     card_network_id: int
     current_limit: Decimal
     closing_day: int
+    due_day: int
     financing_rate_local: Decimal
     overdue_rate_local: Decimal
     financing_rate_usd: Decimal
@@ -33,6 +34,7 @@ class CreditCardOut(BaseModel):
             card_network_id=c.card_network_id,
             current_limit=c.current_limit,
             closing_day=c.closing_day,
+            due_day=c.due_day,
             financing_rate_local=c.financing_rate_local,
             overdue_rate_local=c.overdue_rate_local,
             financing_rate_usd=c.financing_rate_usd,
@@ -48,6 +50,7 @@ class CreditCardUpdate(BaseModel):
     institution_id: int | None = None
     card_network_id: int | None = None
     closing_day: int | None = None
+    due_day: int | None = None
 
 
 class StatementOut(BaseModel):

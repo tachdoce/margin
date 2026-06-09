@@ -15,6 +15,7 @@ def _card_kwargs(user):
         card_network_id=1,
         current_limit=Decimal("150000.00"),
         closing_day=13,
+        due_day=13,
         financing_rate_local=Decimal("69.98"),
         overdue_rate_local=Decimal("81.27"),
         financing_rate_usd=Decimal("13.50"),
@@ -33,6 +34,7 @@ def test_insert_and_read(db_session, seed_cc_refs):
     db_session.refresh(card)
     assert card.id is not None
     assert card.closing_day == 13
+    assert card.due_day == 13
     assert card.financing_rate_local == Decimal("69.98")
     assert card.created_at is not None
     assert card.deleted_at is None

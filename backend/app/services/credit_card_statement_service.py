@@ -465,6 +465,7 @@ def promote_staging_statement(db: Session, user: User) -> CreditCard:
             card_network_id=madre.card_network_id,
             current_limit=madre.current_limit,
             closing_day=madre.closing_date.day,
+            due_day=madre.due_date.day,
             financing_rate_local=madre.financing_rate_local,
             overdue_rate_local=madre.overdue_rate_local,
             financing_rate_usd=madre.financing_rate_usd,

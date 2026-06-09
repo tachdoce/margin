@@ -84,7 +84,12 @@ def update_credit_card(
     if card is None:
         raise AppError(ErrorCode.not_found)
 
-    if payload.institution_id is None and payload.card_network_id is None and payload.closing_day is None:
+    if (
+        payload.institution_id is None
+        and payload.card_network_id is None
+        and payload.closing_day is None
+        and payload.due_day is None
+    ):
         raise AppError(ErrorCode.empty_patch)
 
     if payload.institution_id is not None:
@@ -97,6 +102,8 @@ def update_credit_card(
             raise AppError(ErrorCode.card_network_invalid, field="card_network_id")
     if payload.closing_day is not None and not (1 <= payload.closing_day <= 31):
         raise AppError(ErrorCode.closing_day_invalid, field="closing_day")
+    if payload.due_day is not None and not (1 <= payload.due_day <= 31):
+        raise AppError(ErrorCode.due_day_invalid, field="due_day")
 
     # unicidad: combinación final contra otra vigente del usuario
     new_inst = payload.institution_id if payload.institution_id is not None else card.institution_id
@@ -120,6 +127,8 @@ def update_credit_card(
         card.card_network_id = payload.card_network_id
     if payload.closing_day is not None:
         card.closing_day = payload.closing_day
+    if payload.due_day is not None:
+        card.due_day = payload.due_day
     db.flush()
 
     review_credit_card(db, card.id)

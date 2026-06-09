@@ -62,6 +62,7 @@ def test_list_vigente_y_soft_deleted(client, db_session, seed_cc_refs):
     for c in cards:
         assert "reviewed_at" not in c and "deleted_at" not in c and "user_acknowledged_at" not in c
         assert isinstance(c["review_findings"], list)
+    assert all("due_day" in c for c in cards)
 
 
 def test_list_only_own(client, db_session, seed_cc_refs):
