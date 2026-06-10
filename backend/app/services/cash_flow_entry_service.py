@@ -14,6 +14,8 @@ from app.models.plan import Plan
 from app.models.user import User
 from app.models.user_financial_settings import UserFinancialSettings
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
+from app.services.cash_flow.constants import PROJECTED_MINIMUM_RATE
+from app.services.cash_flow.interest import monthly_carry
 
 _TIMELINE_SQL = text(
     """
@@ -156,6 +158,37 @@ def _available_now(db: Session, user: User, today: date) -> Decimal:
     return total
 
 
+def _apply_card_carryover(db: Session, buckets: dict, today: date, current_key: str) -> None:
+    """Suma a las rows de tarjeta del mes actual el saldo impago + interés del mes anterior
+    (misma tarjeta y moneda). Sube el amount/amount_converted de la row, recomputa su mínimo
+    al 15% del amount arrastrado, y sube el pending (pe) del mes."""
+    py, pm = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
+    prev_key = f"{py:04d}-{pm:02d}"
+    cur = buckets.get(current_key)
+    prev = buckets.get(prev_key)
+    if cur is None or prev is None:
+        return
+    prev_cards = {
+        (e.source_id, e.currency_id): e
+        for e in prev["expenses"]
+        if e.source_type == "tarjeta_credito"
+    }
+    for row in cur["expenses"]:
+        if row.source_type != "tarjeta_credito":
+            continue
+        p = prev_cards.get((row.source_id, row.currency_id))
+        if p is None:
+            continue
+        carry = monthly_carry(p.amount, p.paid_real, p.minimum_payment, p.financing_rate, p.overdue_rate)
+        if carry <= 0:
+            continue
+        carry_conv = carry * _rate(db, row.currency_id, row.event_date)
+        row.amount += carry
+        row.amount_converted += carry_conv
+        row.minimum_payment = (row.amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        cur["pe"] += carry_conv
+
+
 def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date | None = None) -> TimelineOut:
     if plan_id is None:
         raise AppError(ErrorCode.plan_id_required)
@@ -198,6 +231,7 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
             b["pe"] += pending
 
     current_key = today.strftime("%Y-%m")
+    _apply_card_carryover(db, buckets, today, current_key)
     months: list[MonthOut] = []
     prev_balance: Decimal | None = None
     for key in sorted(buckets):

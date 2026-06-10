@@ -441,3 +441,57 @@ def test_timeline_plan_movement_minimum_is_amount(client, db_session, seed_cc_re
     assert Decimal(e["financing_rate"]) == Decimal("0")
     assert Decimal(e["overdue_rate"]) == Decimal("0")
     assert Decimal(e["minimum_payment"]) == Decimal("45000.00")  # plan_movements: cfe.amount
+
+
+def test_carryover_adds_prev_unpaid_to_current_month(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    prev = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(prev)
+    db_session.commit()
+    db_session.refresh(prev)
+    _pay(db_session, prev, amount="200.00")  # pago real: 200 >= mínimo 100 -> financiación
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    row = next(e for e in jun.expenses if str(e.source_id) == str(card.id))
+    assert row.amount == Decimal("810.80")            # 0 + arrastre (saldo 800 + interés 10.80)
+    assert row.minimum_payment == Decimal("121.62")   # 810.80 * 0.15 (mínimo del mes sobre el amount arrastrado)
+    assert jun.pending_expenses == Decimal("810.80")  # el arrastre sube el pendiente (Peso, cotiza x1)
+
+
+def test_carryover_skips_when_prev_settled(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    prev = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(prev)
+    db_session.commit()
+    db_session.refresh(prev)
+    _pay(db_session, prev, amount="1000.00")  # saldado
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    row = next(e for e in jun.expenses if str(e.source_id) == str(card.id))
+    assert row.amount == Decimal("0.00")  # mes anterior saldado -> sin arrastre
