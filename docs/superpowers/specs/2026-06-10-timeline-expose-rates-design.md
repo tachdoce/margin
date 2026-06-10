@@ -95,7 +95,8 @@ Las rows del timeline (meses y `open_debts`) suman 3 campos: `financing_rate`, `
 
 - **Tarjeta:** una row de `tarjeta_credito` con `financing_rate`/`overdue_rate`/`minimum_payment` sembrados →
   la respuesta los trae; una cuota sin `minimum_payment` → `minimum_payment` null.
-- **Ingreso:** una row de `ingreso` → `financing_rate == 0`, `overdue_rate == 0`, `minimum_payment == 0`.
+- **Plan movement (vía `_income_entry`):** una row `plan_movimiento_entrada` → `financing_rate == 0`,
+  `overdue_rate == 0`, `minimum_payment == amount` (la rama de plan_movements usa `cfe.amount`).
 - **`deuda_abierta` (guarda del Bug 2):** **plegado en el test existente** `test_open_debt_projected_into_month`
   (no un test nuevo). Ese test ya arma una `deuda_abierta` con un pago planificado; se le agrega un pago real y
   dos asserts sobre la proyección mensual: `financing_rate == 0` **y** `paid_real` correcto (no intercambiados
