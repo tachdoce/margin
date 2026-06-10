@@ -177,32 +177,39 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
             b["expenses"].append(entry)
             b["pe"] += pending
 
+    current_key = today.strftime("%Y-%m")
     months: list[MonthOut] = []
     prev_balance: Decimal | None = None
-    for i, key in enumerate(sorted(buckets)):
+    for key in sorted(buckets):
         b = buckets[key]
         b["incomes"].sort(key=lambda e: (e.event_date, str(e.id)))
         b["expenses"].sort(key=lambda e: (e.event_date, str(e.id)))
-        if i == 0:
-            available = _available_now(db, user, today)
-            remaining_spending = dial_prorated
+        if key < current_key:
+            # mes pasado: histórico, totales en 0, no arrastra
+            available = pending_income = pending_expenses = remaining_spending = balance = Decimal("0")
         else:
-            available = prev_balance
-            remaining_spending = dial
-        balance = (available + b["pi"]) - (b["pe"] + remaining_spending)
+            if prev_balance is None:  # primer mes >= actual = ancla del efectivo
+                available = _available_now(db, user, today)
+                remaining_spending = dial_prorated if key == current_key else dial
+            else:
+                available = prev_balance
+                remaining_spending = dial
+            pending_income = b["pi"]
+            pending_expenses = b["pe"]
+            balance = (available + pending_income) - (pending_expenses + remaining_spending)
+            prev_balance = balance
         months.append(
             MonthOut(
                 month=key,
                 available=available,
-                pending_income=b["pi"],
-                pending_expenses=b["pe"],
+                pending_income=pending_income,
+                pending_expenses=pending_expenses,
                 remaining_spending=remaining_spending,
                 balance=balance,
                 incomes=b["incomes"],
                 expenses=b["expenses"],
             )
         )
-        prev_balance = balance
 
     return TimelineOut(months=months, open_debts=open_debts)
 

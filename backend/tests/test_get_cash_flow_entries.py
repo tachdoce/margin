@@ -96,12 +96,15 @@ def test_timeline_groups_by_month_and_flow(client, db_session, seed_cc_refs):
     body = r.json()
     assert [m["month"] for m in body["months"]] == ["2026-06"]
     jun = body["months"][0]
-    assert jun["pending_income"] == "45000.00"
-    assert jun["pending_expenses"] == "6000.00"
-    assert jun["balance"] == "39000.00"
     assert len(jun["incomes"]) == 1 and len(jun["expenses"]) == 1
     assert "is_income" not in jun["incomes"][0]  # no se serializa
     assert body["open_debts"] == []
+    # agregados con today fijo (deterministas)
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 5))
+    jun_obj = out.months[0]
+    assert jun_obj.pending_income == Decimal("45000.00")
+    assert jun_obj.pending_expenses == Decimal("6000.00")
+    assert jun_obj.balance == Decimal("39000.00")
 
 
 def test_requires_plan_id(client, db_session, seed_cc_refs):
@@ -233,7 +236,9 @@ def test_open_debt_projected_into_month(client, db_session, seed_cc_refs):
     proj = jul["expenses"][0]
     assert proj["id"] == str(entry.id)
     assert proj["amount"] == "5000.00"
-    assert jul["pending_expenses"] == "5000.00"
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jul_obj = next(m for m in out.months if m.month == "2026-07")
+    assert jul_obj.pending_expenses == Decimal("5000.00")
 
 
 def test_description_credit_card_and_soft_deleted_included(client, db_session, seed_cc_refs):
@@ -300,7 +305,7 @@ def test_pending_nets_paid_real(client, db_session, seed_cc_refs):
     plan = _plan(db_session, user)  # dial 0
     e = _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="6000.00")
     _pay(db_session, e, amount="2000.00")  # pago real
-    out = svc.get_timeline(db_session, user, plan.id)
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
     jun = out.months[0]
     assert jun.pending_expenses == Decimal("4000.00")  # efectivo 6000 − paid_real 2000
 
@@ -349,3 +354,23 @@ def test_available_carries_balance_to_next_month(client, db_session, seed_cc_ref
     assert jun.balance == Decimal("15000.00")      # (10000 + 5000) − (0 + 0)
     assert jul.available == Decimal("15000.00")    # arrastre
     assert jul.balance == Decimal("12000.00")      # (15000 + 0) − (3000 + 0)
+
+
+def test_past_month_zeroed_and_not_carried(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan_dial(db_session, user, "0")
+    _cash(db_session, user, 1, "10000.00")
+    _card_entry(db_session, user, event_date=date(2026, 5, 10), amount="3000.00")            # mes pasado
+    _income_entry(db_session, user, plan, event_date=date(2026, 6, 10), amount="5000.00")    # mes actual
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    may, jun = out.months[0], out.months[1]
+    assert may.month == "2026-05"
+    assert may.available == Decimal("0")
+    assert may.pending_income == Decimal("0")
+    assert may.pending_expenses == Decimal("0")
+    assert may.remaining_spending == Decimal("0")
+    assert may.balance == Decimal("0")
+    assert len(may.expenses) == 1                 # la row del mes pasado igual aparece
+    assert jun.available == Decimal("10000.00")   # el mes actual arranca con el efectivo, sin arrastrar mayo
+    assert jun.balance == Decimal("15000.00")     # (10000 + 5000) − (0 + 0)
