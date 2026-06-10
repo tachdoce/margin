@@ -23,3 +23,4 @@ from app.models.obligation import Obligation  # noqa: F401
 from app.models.cash_flow_entry import CashFlowEntry  # noqa: F401
 from app.models.cash_flow_payment import CashFlowPayment  # noqa: F401
 from app.models.financing import Financing  # noqa: F401
+from app.models.cash_balance import CashBalance  # noqa: F401

@@ -58,3 +58,21 @@ def credit_card_usd_currency(db: Session, user: User) -> Currency:
             Currency.is_legal_tender.is_(False),
         )
     ).scalars().first()
+
+
+def holdable_currencies(db: Session, user: User) -> list[Currency]:
+    """Monedas que el usuario puede tener como efectivo: de su país y allowed_in_credit_card."""
+    return list(
+        db.execute(
+            select(Currency)
+            .where(Currency.country_code == user.country_code, Currency.allowed_in_credit_card.is_(True))
+            .order_by(Currency.id)
+        ).scalars()
+    )
+
+
+def require_holdable_currency(db: Session, user: User, currency_id: int | None) -> Currency:
+    cur = db.get(Currency, currency_id) if currency_id is not None else None
+    if cur is None or cur.country_code != user.country_code or not cur.allowed_in_credit_card:
+        raise AppError(ErrorCode.currency_not_available, field="currency_id")
+    return cur
