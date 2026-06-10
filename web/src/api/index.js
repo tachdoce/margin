@@ -167,6 +167,13 @@ export const api = {
   deletePayment(entryId, paymentId) {
     return request('DELETE', `/cash-flow-entries/${entryId}/payments/${paymentId}`)
   },
+  // --- billetera: efectivo por moneda ---
+  getBalances() {
+    return request('GET', '/cash-balances')
+  },
+  setBalances(body) {
+    return request('PUT', '/cash-balances', body)
+  },
 }
 
 export function saveSession({ user, token }) {
