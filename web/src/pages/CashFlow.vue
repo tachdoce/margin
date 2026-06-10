@@ -214,7 +214,7 @@ async function delPay(p) {
           </span>
         </div>
         <template v-if="openMonth === m.month">
-          <p class="muted">ingresos {{ money0(m.total_income) }} · egresos {{ money0(m.total_expenses) }}</p>
+          <p class="muted">disponible {{ money0(m.available) }} · a cobrar {{ money0(m.pending_income) }} · a pagar {{ money0(m.pending_expenses) }} · gasto restante {{ money0(m.remaining_spending) }}</p>
 
           <div v-if="m.incomes.length">
             <div class="row"><label>Ingresos</label></div>
