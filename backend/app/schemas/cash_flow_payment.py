@@ -28,6 +28,7 @@ class PaymentOut(BaseModel):
     plan_id: uuid.UUID | None
     planned_date: date | None
     created_at: datetime
+    is_auto_generated: bool
 
     @classmethod
     def from_model(cls, p: CashFlowPayment) -> "PaymentOut":
@@ -39,6 +40,7 @@ class PaymentOut(BaseModel):
             plan_id=p.plan_id,
             planned_date=p.planned_date,
             created_at=p.created_at,
+            is_auto_generated=p.is_auto_generated,
         )
 
 
@@ -50,6 +52,7 @@ class PaymentListItem(BaseModel):
     is_planned: bool
     planned_date: date | None
     created_at: datetime
+    is_auto_generated: bool
 
     @classmethod
     def from_model(cls, p: CashFlowPayment) -> "PaymentListItem":
@@ -61,4 +64,5 @@ class PaymentListItem(BaseModel):
             is_planned=p.plan_id is not None,
             planned_date=p.planned_date,
             created_at=p.created_at,
+            is_auto_generated=p.is_auto_generated,
         )

@@ -52,6 +52,7 @@ class PlanMovementOut(BaseModel):
     financing_rate: Decimal | None
     overdue_rate: Decimal | None
     rates_add_vat: bool
+    is_auto_generated: bool
 
     @classmethod
     def from_model(cls, m: PlanMovement) -> "PlanMovementOut":
@@ -70,4 +71,5 @@ class PlanMovementOut(BaseModel):
             financing_rate=m.financing_rate,
             overdue_rate=m.overdue_rate,
             rates_add_vat=m.rates_add_vat,
+            is_auto_generated=m.is_auto_generated,
         )

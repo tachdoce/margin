@@ -125,3 +125,19 @@ def test_patch_payment_not_found(client, db_session, seed_uy_currency):
     user = _last_user(db_session)
     entry = _make_entry(db_session, user)
     assert client.patch(f"/cash-flow-entries/{entry.id}/payments/{uuid.uuid4()}", json={"amount": "1"}, headers=headers).status_code == 404
+
+
+def test_update_payment_ignores_auto_generated(client, db_session, seed_uy_currency):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    entry = _make_entry(db_session, user)
+    p = _pay(db_session, entry, amount="100.00")  # manual -> is_auto_generated False
+    assert p.is_auto_generated is False
+    r = client.patch(
+        f"/cash-flow-entries/{entry.id}/payments/{p.id}",
+        json={"amount": "150.00", "is_auto_generated": True},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(CashFlowPayment, p.id).is_auto_generated is False

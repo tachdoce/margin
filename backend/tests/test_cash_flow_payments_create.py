@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.models.cash_flow_entry import CashFlowEntry
+from app.models.cash_flow_payment import CashFlowPayment
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 
@@ -179,3 +180,26 @@ def test_create_amount_invalid(client, db_session, seed_uy_currency):
     entry = _make_entry(db_session, user)
     assert client.post(f"/cash-flow-entries/{entry.id}/payments", json={"amount": "0"}, headers=headers).json()["code"] == "amount_invalid"
     assert client.post(f"/cash-flow-entries/{entry.id}/payments", json={"amount": "-5"}, headers=headers).json()["code"] == "amount_invalid"
+
+
+def test_create_payment_defaults_auto_generated_false(client, db_session, seed_uy_currency):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    entry = _make_entry(db_session, user)
+    r = client.post(f"/cash-flow-entries/{entry.id}/payments", json={"amount": "4500.00"}, headers=headers)
+    assert r.status_code == 201
+    pay = db_session.get(CashFlowPayment, uuid.UUID(r.json()["id"]))
+    assert pay.is_auto_generated is False
+
+
+def test_payment_out_exposes_auto_generated_and_create_ignores_input(client, db_session, seed_uy_currency):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    entry = _make_entry(db_session, user)
+    r = client.post(
+        f"/cash-flow-entries/{entry.id}/payments",
+        json={"amount": "4500.00", "is_auto_generated": True},  # debe ignorarse
+        headers=headers,
+    )
+    assert r.status_code == 201
+    assert r.json()["is_auto_generated"] is False

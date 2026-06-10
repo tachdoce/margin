@@ -104,3 +104,19 @@ def test_list_empty(client, db_session, seed_uy_currency):
     entry = _make_entry(db_session, user)
     plan = _make_plan(db_session, user)
     assert client.get(f"/cash-flow-entries/{entry.id}/payments?plan_id={plan.id}", headers=headers).json() == []
+
+
+def test_list_item_exposes_auto_generated(client, db_session, seed_uy_currency):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    entry = _make_entry(db_session, user)
+    plan = _make_plan(db_session, user)
+    r = client.post(
+        f"/cash-flow-entries/{entry.id}/payments",
+        json={"amount": "5000.00", "plan_id": str(plan.id), "planned_date": "2026-07-15"},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    rows = client.get(f"/cash-flow-entries/{entry.id}/payments?plan_id={plan.id}", headers=headers).json()
+    assert len(rows) == 1
+    assert all(row["is_auto_generated"] is False for row in rows)

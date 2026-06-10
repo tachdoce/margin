@@ -1,9 +1,11 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
 
 from app.models.cash_flow_entry import CashFlowEntry
+from app.models.plan_movement import PlanMovement
 
 
 def _auth(client, email="u@b.com"):
@@ -292,3 +294,50 @@ def test_delete_other_user_404(client, db_session, seed_uy_currency):
     mov = client.post(f"/plans/{plan_id}/movements", json=_ingreso(), headers=owner).json()
     other = _auth(client, email="other@b.com")
     assert client.delete(f"/plans/{plan_id}/movements/{mov['id']}", headers=other).status_code == 404
+
+
+def test_create_movement_defaults_auto_generated_false(client, db_session, seed_uy_currency):
+    headers = _auth(client)
+    plan_id = _plan(client, headers)
+    movement = client.post(f"/plans/{plan_id}/movements", json=_ingreso(income_duration_months=None), headers=headers).json()
+    pm = db_session.get(PlanMovement, uuid.UUID(movement["id"]))
+    assert pm.is_auto_generated is False
+
+
+def test_plan_movement_auto_generated_persists_true(client, db_session, seed_uy_currency):
+    headers = _auth(client)
+    plan_id = _plan(client, headers)
+    pm = PlanMovement(
+        plan_id=uuid.UUID(plan_id), kind="ingreso", currency_id=1,
+        principal_amount=Decimal("1000.00"), start_date=date(2026, 7, 1),
+        rates_add_vat=False, is_auto_generated=True,
+    )
+    db_session.add(pm)
+    db_session.commit()
+    db_session.refresh(pm)
+    assert pm.is_auto_generated is True
+
+
+def test_movement_out_exposes_auto_generated_and_create_ignores_input(client, db_session, seed_uy_currency):
+    headers = _auth(client)
+    plan_id = _plan(client, headers)
+    body = _ingreso(income_duration_months=None)
+    body["is_auto_generated"] = True  # intento de setearlo: debe ignorarse
+    movement = client.post(f"/plans/{plan_id}/movements", json=body, headers=headers).json()
+    assert movement["is_auto_generated"] is False
+
+
+def test_update_movement_ignores_auto_generated(client, db_session, seed_uy_currency):
+    headers = _auth(client)
+    plan_id = _plan(client, headers)
+    mov = client.post(f"/plans/{plan_id}/movements", json=_ingreso(income_duration_months=None), headers=headers).json()
+    assert mov["is_auto_generated"] is False
+    resp = client.patch(
+        f"/plans/{plan_id}/movements/{mov['id']}",
+        json={"principal_amount": "50000.00", "is_auto_generated": True},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_auto_generated"] is False
+    db_session.expire_all()
+    assert db_session.get(PlanMovement, uuid.UUID(mov["id"])).is_auto_generated is False
