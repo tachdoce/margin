@@ -82,12 +82,14 @@ def test_patch_not_found(client, db_session, seed_uy_currency):
     assert client.patch(f"/cash-flow-entries/{uuid.uuid4()}", json={"amount": "1.00"}, headers=headers).status_code == 404
 
 
-def test_patch_source_not_editable(client, db_session, seed_uy_currency):
+def test_patch_credit_card_now_editable(client, db_session, seed_uy_currency):
+    # con todos los tipos editables, una entry de tarjeta también se edita por PATCH
     headers = _headers(client)
     user = _last_user(db_session)
     e = _entry(db_session, user, source_id=uuid.uuid4(), event_date=FUTURE, source_type="tarjeta_credito")
     r = client.patch(f"/cash-flow-entries/{e.id}", json={"amount": "1.00"}, headers=headers)
-    assert r.json()["code"] == "source_not_editable"
+    assert r.status_code == 200
+    assert r.json()["amount"] == "1.00"
 
 
 def test_patch_past_month_not_editable(client, db_session, seed_uy_currency):

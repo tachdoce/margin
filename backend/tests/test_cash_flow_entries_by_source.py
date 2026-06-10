@@ -77,13 +77,29 @@ def test_source_of_other_user(client, db_session, seed_uy_currency):
     assert client.get(f"/cash-flow-entries/by-source?source_id={o.id}", headers=headers_b).status_code == 404
 
 
-def test_source_not_editable(client, db_session, seed_uy_currency):
+def test_deuda_source_now_listed(client, db_session, seed_uy_currency):
+    # con todos los tipos editables, una deuda también se lista por by-source
     _seed_types(db_session)
     headers = _headers(client)
     user = _last_user(db_session)
     o = _obligation(db_session, user, type_id=10)  # deuda
-    r = client.get(f"/cash-flow-entries/by-source?source_id={o.id}", headers=headers)
-    assert r.json()["code"] == "source_not_editable"
+    _entry(db_session, user, o, event_date=MONTH_START, amount="2.00", source_type="deuda")
+    rows = client.get(f"/cash-flow-entries/by-source?source_id={o.id}", headers=headers).json()
+    assert [r["amount"] for r in rows] == ["2.00"]
+
+
+def test_by_source_generic_non_obligation(client, db_session, seed_uy_currency):
+    # fuente NO-obligación (ingreso): by-source resuelve por las entries, sin tabla obligations
+    headers = _headers(client)
+    user = _last_user(db_session)
+    source_id = uuid.uuid4()
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=MONTH_START, is_income=True, amount=Decimal("45000.00"),
+        currency_id=1, source_type="ingreso", source_id=source_id,
+    ))
+    db_session.commit()
+    rows = client.get(f"/cash-flow-entries/by-source?source_id={source_id}", headers=headers).json()
+    assert [r["source_type"] for r in rows] == ["ingreso"]
 
 
 def test_lists_current_and_future_excludes_past_ordered(client, db_session, seed_uy_currency):

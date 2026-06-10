@@ -6,9 +6,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.cash_flow_entry import CashFlowEntry
-from app.models.obligation import Obligation
-from app.models.obligation_type import ObligationType
+from app.models.cash_flow_entry import CASH_FLOW_SOURCE_TYPES, CashFlowEntry
 from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
@@ -163,7 +161,7 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None) -> Timeline
     return TimelineOut(months=months, open_debts=open_debts)
 
 
-EDITABLE_ENTRY_SOURCE_TYPES = ("gasto",)
+EDITABLE_ENTRY_SOURCE_TYPES = CASH_FLOW_SOURCE_TYPES  # todos editables (exploratorio: ver cuáles quitar)
 
 
 def list_by_source(db, user, source_id, *, today: date | None = None):
@@ -171,14 +169,15 @@ def list_by_source(db, user, source_id, *, today: date | None = None):
         raise AppError(ErrorCode.source_id_required)
     today = today or date.today()
 
-    kind = db.execute(
-        select(ObligationType.obligation_kind)
-        .join(Obligation, Obligation.obligation_type_id == ObligationType.id)
-        .where(Obligation.id == source_id, Obligation.user_id == user.id)
+    # resolución polimórfica: el source_type sale de las propias entries (no de obligations)
+    source_type = db.execute(
+        select(CashFlowEntry.source_type)
+        .where(CashFlowEntry.source_id == source_id, CashFlowEntry.user_id == user.id)
+        .limit(1)
     ).scalar_one_or_none()
-    if kind is None:
+    if source_type is None:
         raise AppError(ErrorCode.not_found)
-    if kind not in EDITABLE_ENTRY_SOURCE_TYPES:
+    if source_type not in EDITABLE_ENTRY_SOURCE_TYPES:
         raise AppError(ErrorCode.source_not_editable)
 
     month_start = today.replace(day=1)
