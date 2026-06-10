@@ -25,6 +25,9 @@
   `event_date` de la row).
 - **(a)** El arrastre **sube `pending_expenses`** del mes actual (es deuda que ahora se debe): se suma el
   arrastre convertido al pendiente del mes (y por lo tanto baja el `balance`).
+- **Mínimo del mes:** en la row que recibe arrastre se **recomputa `minimum_payment = amount ×
+  PROJECTED_MINIMUM_RATE`** (el 15% global, misma constante que el motor) sobre el `amount` ya arrastrado, para
+  mostrar el mínimo a pagar del mes. Las rows sin arrastre conservan el `minimum_payment` del motor.
 - Las rows del mes anterior (mes pasado → totales en 0, pero **las filas siguen** con sus datos) aportan
   `amount`, `paid_real`, `minimum_payment`, `financing_rate`, `overdue_rate` para el cálculo.
 - Si no hay row del mes anterior para esa tarjeta+moneda, o el saldo es ≤ 0, no hay arrastre.
@@ -72,9 +75,10 @@ Segunda pasada en `cash_flow_entry_service.get_timeline`, **después** de armar 
 3. Para cada row de tarjeta del bucket `current`: buscar su par en `prev`; si hay, `carry =
    monthly_carry(prev.amount, prev.paid_real, prev.minimum_payment, prev.financing_rate, prev.overdue_rate)`.
 4. Si `carry > 0`: `row.amount += carry`; `row.amount_converted += carry × _rate(currency_id, row.event_date)`;
-   y sumar `carry_converted` al `pending_expenses` del mes actual.
+   `row.minimum_payment = (row.amount × PROJECTED_MINIMUM_RATE).quantize(0.01, HALF_UP)`; y sumar
+   `carry_converted` al `pending_expenses` del mes actual.
 
-`MonthEntryOut.amount`/`amount_converted` ya existen; **sin campos nuevos** en el schema. El resto del timeline
+`MonthEntryOut.amount`/`amount_converted`/`minimum_payment` ya existen; **sin campos nuevos** en el schema. El resto del timeline
 (efectivo, arrastre del balance, meses pasados en 0) no cambia.
 
 ---

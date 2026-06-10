@@ -151,6 +151,7 @@ def test_carryover_adds_prev_unpaid_to_current_month(client, db_session, seed_cc
     jun = next(m for m in out.months if m.month == "2026-06")
     row = next(e for e in jun.expenses if str(e.source_id) == str(card.id))
     assert row.amount == Decimal("810.80")            # 0 + arrastre (saldo 800 + interés 10.80)
+    assert row.minimum_payment == Decimal("121.62")   # 810.80 * 0.15 (mínimo del mes sobre el amount arrastrado)
     assert jun.pending_expenses == Decimal("810.80")  # el arrastre sube el pendiente (Peso, cotiza x1)
 
 
@@ -188,9 +189,10 @@ cd /Users/tachone/proyectos/margin/backend && source .venv/bin/activate && pytes
 
 Expected: FALLA (`row.amount == 0.00`, todavía sin arrastre).
 
-- [ ] **Step 3: Import** — en `app/services/cash_flow_entry_service.py`, con los imports de servicios:
+- [ ] **Step 3: Imports** — en `app/services/cash_flow_entry_service.py`, con los imports de servicios:
 
 ```python
+from app.services.cash_flow.constants import PROJECTED_MINIMUM_RATE
 from app.services.cash_flow.interest import monthly_carry
 ```
 
@@ -224,8 +226,11 @@ def _apply_card_carryover(db: Session, buckets: dict, today: date, current_key: 
         carry_conv = carry * _rate(db, row.currency_id, row.event_date)
         row.amount += carry
         row.amount_converted += carry_conv
+        row.minimum_payment = (row.amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         cur["pe"] += carry_conv
 ```
+
+(El `minimum_payment` del mes se recomputa al 15% del `amount` arrastrado — misma constante que el motor.)
 
 - [ ] **Step 5: Llamar al helper** — en `get_timeline`, reemplazar:
 
