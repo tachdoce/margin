@@ -77,6 +77,21 @@ def _projection_sums(
     return sums
 
 
+def _densify_projection(sums, statement, horizon, currency_ids):
+    """Rellena con 0 cada (año, mes, moneda) faltante desde M+1 hasta el horizonte (in place)."""
+    base_y, base_m = statement.closing_date.year, statement.closing_date.month
+    horizon_key = (horizon.year, horizon.month)
+    k = 1
+    while True:
+        y, m = _add_months(base_y, base_m, k)
+        if (y, m) > horizon_key:
+            break
+        for cid in currency_ids:
+            sums.setdefault((y, m, cid), Decimal("0"))
+        k += 1
+    return sums
+
+
 def _reconcile(
     db: Session, card: CreditCard, targets: dict[tuple[int, int, int], dict], today: date
 ) -> None:
@@ -186,7 +201,9 @@ def materialize_credit_card(
     # --- Responsabilidad 2: proyección de meses siguientes ---
     if statement is not None:
         rate_pair = {local_id: (fin_local, over_local), usd_id: (fin_usd, over_usd)}
-        for (y, m, cid), amount in _projection_sums(db, statement, horizon).items():
+        sums = _projection_sums(db, statement, horizon)
+        _densify_projection(sums, statement, horizon, (local_id, usd_id))
+        for (y, m, cid), amount in sums.items():
             fin, over = rate_pair.get(cid, (None, None))
             # vence el mismo mes del cierre si due_day >= closing_day; si no, el mes siguiente
             if card.due_day >= card.closing_day:

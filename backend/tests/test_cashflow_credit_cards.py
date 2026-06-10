@@ -91,9 +91,9 @@ def test_two_currencies(db_session, user_uy):
     card = _make_card(db_session, user_uy)
     _make_statement(db_session, card)
     materialize_credit_card(db_session, card.id, today=TODAY)
-    entries = {e.currency_id: e for e in _orm_entries(db_session, card)}
-    assert set(entries) == {1, 3}
-    local = entries[1]
+    keys = _by_key(db_session, card)
+    assert (2026, 5, 1) in keys and (2026, 5, 3) in keys  # R1 en ambas monedas (mes del cierre)
+    local = keys[(2026, 5, 1)]
     assert local.amount == Decimal("7991.28")
     assert local.event_date == date(2026, 5, 25)
     assert (local.issue_year, local.issue_month) == (2026, 5)
@@ -101,7 +101,7 @@ def test_two_currencies(db_session, user_uy):
     assert local.is_income is False
     assert local.financing_rate == Decimal("85.38")  # 69.98 * 1.22
     assert local.overdue_rate == Decimal("99.15")    # 81.27 * 1.22
-    usd = entries[3]
+    usd = keys[(2026, 5, 3)]
     assert usd.amount == Decimal("65.35")
     assert usd.minimum_payment == Decimal("0.00")
     assert usd.financing_rate == Decimal("16.47")  # 13.50 * 1.22
@@ -112,9 +112,9 @@ def test_zero_usd_total_only_local(db_session, user_uy):
     card = _make_card(db_session, user_uy)
     _make_statement(db_session, card, total_usd=Decimal("0.00"))
     materialize_credit_card(db_session, card.id, today=TODAY)
-    entries = _orm_entries(db_session, card)
-    assert len(entries) == 1
-    assert entries[0].currency_id == 1
+    keys = _by_key(db_session, card)
+    assert (2026, 5, 1) in keys       # R1 local (mes del cierre)
+    assert (2026, 5, 3) not in keys   # R1 no crea USD con total 0; el relleno arranca en M+1
 
 
 def test_reconcile_updates_not_duplicates(db_session, user_uy):
@@ -124,9 +124,9 @@ def test_reconcile_updates_not_duplicates(db_session, user_uy):
     st.total_local = Decimal("200.00")
     db_session.flush()
     materialize_credit_card(db_session, card.id, today=TODAY)
-    entries = _orm_entries(db_session, card)
-    assert len(entries) == 1
-    assert entries[0].amount == Decimal("200.00")
+    keys_list = [(e.issue_year, e.issue_month, e.currency_id) for e in _orm_entries(db_session, card)]
+    assert sum(1 for k in keys_list if k == (2026, 5, 1)) == 1   # no se duplicó
+    assert _by_key(db_session, card)[(2026, 5, 1)].amount == Decimal("200.00")
 
 
 def test_currency_that_lost_total_is_deleted(db_session, user_uy):
@@ -137,8 +137,9 @@ def test_currency_that_lost_total_is_deleted(db_session, user_uy):
     st.total_usd = Decimal("0.00")
     db_session.flush()
     materialize_credit_card(db_session, card.id, today=TODAY)
-    cids = {e.currency_id for e in _orm_entries(db_session, card)}
-    assert cids == {1}  # la fila USD futura se borró
+    keys = _by_key(db_session, card)
+    assert (2026, 5, 3) not in keys                   # la fila USD del cierre (R1) se borró al caer el total
+    assert keys[(2026, 6, 3)].amount == Decimal("0")  # el USD futuro queda como relleno 0
 
 
 def test_no_delete_when_real_payment(db_session, user_uy):
@@ -221,7 +222,7 @@ def test_pending_installment_projects_remaining_months(db_session, user_uy):
     assert junio.event_date == date(2026, 6, 13)
     assert junio.minimum_payment == Decimal("299.63")  # 1997.50 * 0.15 (R2 proyectado, HALF_UP)
     assert keys[(2026, 5, 1)].minimum_payment == Decimal("600.00")  # R1 sigue con el mínimo del banco
-    assert (2026, 7, 1) not in keys  # no hay más cuotas
+    assert keys[(2026, 7, 1)].amount == Decimal("0")  # relleno: meses sin cuota quedan en 0
 
 
 def test_subscription_projects_every_month(db_session, user_uy, sub_type):
@@ -242,8 +243,10 @@ def test_one_payment_not_projected(db_session, user_uy):
     st = _make_statement(db_session, card, total_usd=Decimal("0.00"))
     _add_item(db_session, st, amount=Decimal("500.00"), currency_id=1, item_type_id=1)  # sin cuotas, compra
     materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
-    future = [(y, m) for (y, m, c) in _by_key(db_session, card) if (y, m) != (2026, 5)]
-    assert future == []  # solo el resumen de mayo (R1), nada proyectado
+    keys = _by_key(db_session, card)
+    future = [k for k in keys if (k[0], k[1]) != (2026, 5)]
+    assert future  # ahora hay relleno hasta el horizonte
+    assert all(keys[k].amount == Decimal("0") for k in future)  # nada real proyectado (compra de un pago)
 
 
 def test_grouping_sums_same_month_currency(db_session, user_uy):
@@ -304,7 +307,7 @@ def test_reprojection_deletes_stale_future(db_session, user_uy):
     db_session.flush()
     materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
     keys = _by_key(db_session, card)
-    assert (2026, 6, 1) not in keys and (2026, 7, 1) not in keys  # proyecciones futuras borradas
+    assert keys[(2026, 6, 1)].amount == Decimal("0") and keys[(2026, 7, 1)].amount == Decimal("0")  # sin cuota -> 0 (no se borran; el borrado de futuros es del soft-delete)
 
 
 def test_projection_due_day_same_month(db_session, user_uy):
@@ -324,3 +327,19 @@ def test_projection_due_day_next_month(db_session, user_uy):
     materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 12, 31))
     entry = _by_key(db_session, card)[(2026, 6, 1)]  # issue = mes de cierre (junio)
     assert entry.event_date == date(2026, 7, 5)       # vence el mes siguiente
+
+
+def test_projection_zero_fills_both_currencies(db_session, user_uy):
+    card = _make_card(db_session, user_uy, closing_day=13)
+    st = _make_statement(db_session, card, total_usd=Decimal("0.00"))  # solo local en R1
+    _add_item(db_session, st, amount=Decimal("100.00"), currency_id=1, item_type_id=1,
+              current_installment=3, total_installments=4)  # 1 cuota -> junio
+    materialize_credit_card(db_session, card.id, today=TODAY, horizon=date(2026, 8, 31))
+    keys = _by_key(db_session, card)
+    for (y, m) in [(2026, 6), (2026, 7), (2026, 8)]:        # cada mes M+1..horizonte en ambas monedas
+        assert (y, m, 1) in keys and (y, m, 3) in keys
+    assert keys[(2026, 6, 1)].amount == Decimal("100.00")  # cuota real
+    assert keys[(2026, 7, 1)].amount == Decimal("0")       # local sin cuota -> 0
+    assert keys[(2026, 6, 3)].amount == Decimal("0")       # usd siempre -> 0
+    assert keys[(2026, 7, 1)].financing_rate == keys[(2026, 6, 1)].financing_rate  # tasas heredadas
+    assert keys[(2026, 7, 1)].minimum_payment == Decimal("0.00")                    # 0 * 0.15
