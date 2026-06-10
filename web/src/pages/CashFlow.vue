@@ -79,7 +79,12 @@ async function loadTimeline() {
   error.value = ''
   try {
     timeline.value = await api.getTimeline(selectedPlanId.value)
-    openMonth.value = timeline.value.months[0]?.month ?? null
+    // preservar el mes abierto si sigue existiendo (al recargar tras un pago/edición);
+    // si no, abrir el primero
+    const months = timeline.value.months
+    if (!months.some((m) => m.month === openMonth.value)) {
+      openMonth.value = months[0]?.month ?? null
+    }
   } catch (e) {
     error.value = e.message
   }
