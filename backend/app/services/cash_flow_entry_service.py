@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.cash_flow_entry import CASH_FLOW_SOURCE_TYPES, CashFlowEntry
+from app.models.cash_flow_entry import CashFlowEntry
 from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
@@ -161,7 +161,14 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None) -> Timeline
     return TimelineOut(months=months, open_debts=open_debts)
 
 
-EDITABLE_ENTRY_SOURCE_TYPES = CASH_FLOW_SOURCE_TYPES  # todos editables (exploratorio: ver cuáles quitar)
+EDITABLE_ENTRY_SOURCE_TYPES = (
+    "gasto",
+    "deuda",
+    "deuda_abierta",
+    "ingreso",
+    "plan_movimiento",
+    "plan_movimiento_entrada",
+)  # tarjeta_credito excluido: el monto sale del resumen real y el motor lo pisa
 
 
 def list_by_source(db, user, source_id, *, today: date | None = None):

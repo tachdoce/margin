@@ -102,6 +102,20 @@ def test_by_source_generic_non_obligation(client, db_session, seed_uy_currency):
     assert [r["source_type"] for r in rows] == ["ingreso"]
 
 
+def test_by_source_credit_card_not_editable(client, db_session, seed_uy_currency):
+    # tarjeta_credito ya no es editable
+    headers = _headers(client)
+    user = _last_user(db_session)
+    source_id = uuid.uuid4()
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=MONTH_START, is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=source_id,
+    ))
+    db_session.commit()
+    r = client.get(f"/cash-flow-entries/by-source?source_id={source_id}", headers=headers)
+    assert r.json()["code"] == "source_not_editable"
+
+
 def test_lists_current_and_future_excludes_past_ordered(client, db_session, seed_uy_currency):
     _seed_types(db_session)
     headers = _headers(client)
