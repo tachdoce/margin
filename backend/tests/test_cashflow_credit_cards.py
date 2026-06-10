@@ -219,7 +219,8 @@ def test_pending_installment_projects_remaining_months(db_session, user_uy):
     junio = keys[(2026, 6, 1)]
     assert junio.amount == Decimal("1997.50")
     assert junio.event_date == date(2026, 6, 13)
-    assert junio.minimum_payment is None
+    assert junio.minimum_payment == Decimal("299.63")  # 1997.50 * 0.15 (R2 proyectado, HALF_UP)
+    assert keys[(2026, 5, 1)].minimum_payment == Decimal("600.00")  # R1 sigue con el mínimo del banco
     assert (2026, 7, 1) not in keys  # no hay más cuotas
 
 
@@ -233,7 +234,7 @@ def test_subscription_projects_every_month(db_session, user_uy, sub_type):
     sample = _by_key(db_session, card)[(2026, 7, 3)]
     assert sample.amount == Decimal("69.99")
     assert sample.event_date == date(2026, 7, 13)
-    assert sample.minimum_payment is None
+    assert sample.minimum_payment == Decimal("10.50")  # 69.99 * 0.15, HALF_UP
 
 
 def test_one_payment_not_projected(db_session, user_uy):
@@ -274,7 +275,7 @@ def test_projection_becomes_real(db_session, user_uy, sub_type):
     materialize_credit_card(db_session, card.id, today=date(2026, 4, 1), horizon=date(2026, 12, 31))
     # mayo quedó proyectado (suscripción), minimum_payment NULL
     proj_may = _by_key(db_session, card)[(2026, 5, 1)]
-    assert proj_may.minimum_payment is None
+    assert proj_may.minimum_payment == Decimal("15.00")  # 100.00 * 0.15
     assert proj_may.amount == Decimal("100.00")
     # llega el resumen real de mayo
     st_may = _make_statement(db_session, card, issue_year=2026, issue_month=5, closing_day=13, due_day=25,

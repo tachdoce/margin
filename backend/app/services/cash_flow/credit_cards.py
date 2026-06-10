@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.models.credit_card_item_type import CreditCardItemType
 from app.models.credit_card_statement import CreditCardStatement
 from app.models.credit_card_statement_item import CreditCardStatementItem
 from app.models.user import User
+from app.services.cash_flow.constants import PROJECTED_MINIMUM_RATE
 from app.services.cash_flow.date_utils import compute_event_date
 from app.services.cash_flow.rates import effective_rate
 from app.services.scoping import credit_card_usd_currency, legal_tender_currency
@@ -197,7 +198,7 @@ def materialize_credit_card(
                 amount=amount,
                 financing_rate=fin,
                 overdue_rate=over,
-                minimum_payment=None,
+                minimum_payment=(amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             )
 
     _reconcile(db, card, targets, today)
