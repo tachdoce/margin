@@ -17,6 +17,9 @@ class TimelineEntryOut(BaseModel):
     amount_converted: Decimal
     paid_real_converted: Decimal
     planned_amount_converted: Decimal
+    financing_rate: Decimal
+    overdue_rate: Decimal
+    minimum_payment: Decimal | None
 
 
 class MonthEntryOut(TimelineEntryOut):

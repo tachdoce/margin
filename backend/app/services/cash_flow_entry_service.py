@@ -19,21 +19,28 @@ _TIMELINE_SQL = text(
     """
 WITH entries AS (
   SELECT cfe.id, cfe.event_date, cfe.amount, cfe.currency_id,
-         cfe.source_type, cfe.source_id, cfe.is_income, o.description
+         cfe.source_type, cfe.source_id, cfe.is_income, o.description,
+         COALESCE(cfe.financing_rate, 0) AS financing_rate,
+         COALESCE(cfe.overdue_rate, 0)   AS overdue_rate,
+         cfe.amount                      AS minimum_payment
   FROM cash_flow_entries cfe
   JOIN obligations o ON o.id = cfe.source_id
   WHERE cfe.user_id = :user_id
     AND cfe.source_type IN ('gasto', 'deuda', 'deuda_abierta')
   UNION ALL
   SELECT cfe.id, cfe.event_date, cfe.amount, cfe.currency_id,
-         cfe.source_type, cfe.source_id, cfe.is_income, i.description
+         cfe.source_type, cfe.source_id, cfe.is_income, i.description,
+         0 AS financing_rate, 0 AS overdue_rate, 0 AS minimum_payment
   FROM cash_flow_entries cfe
   JOIN incomes i ON i.id = cfe.source_id
   WHERE cfe.user_id = :user_id
     AND cfe.source_type = 'ingreso'
   UNION ALL
   SELECT cfe.id, cfe.event_date, cfe.amount, cfe.currency_id,
-         cfe.source_type, cfe.source_id, cfe.is_income, pm.description
+         cfe.source_type, cfe.source_id, cfe.is_income, pm.description,
+         COALESCE(cfe.financing_rate, 0) AS financing_rate,
+         COALESCE(cfe.overdue_rate, 0)   AS overdue_rate,
+         cfe.amount                      AS minimum_payment
   FROM cash_flow_entries cfe
   JOIN plan_movements pm ON pm.id = cfe.source_id
   WHERE cfe.user_id = :user_id
@@ -42,7 +49,10 @@ WITH entries AS (
   UNION ALL
   SELECT cfe.id, cfe.event_date, cfe.amount, cfe.currency_id,
          cfe.source_type, cfe.source_id, cfe.is_income,
-         inst.name || ' ' || ccn.name AS description
+         inst.name || ' ' || ccn.name AS description,
+         COALESCE(cfe.financing_rate, 0) AS financing_rate,
+         COALESCE(cfe.overdue_rate, 0)   AS overdue_rate,
+         cfe.minimum_payment             AS minimum_payment
   FROM cash_flow_entries cfe
   JOIN credit_cards cc          ON cc.id = cfe.source_id
   JOIN institutions inst        ON inst.id = cc.institution_id
@@ -54,12 +64,14 @@ entries_with_payments AS (
   SELECT
     e.id, e.event_date, e.amount, e.currency_id,
     e.source_type, e.source_id, e.is_income, e.description,
+    e.financing_rate, e.overdue_rate, e.minimum_payment,
     COALESCE(SUM(p.amount) FILTER (WHERE p.plan_id IS NULL), 0.00)    AS paid_real,
     COALESCE(SUM(p.amount) FILTER (WHERE p.plan_id = :plan_id), 0.00) AS planned_amount
   FROM entries e
   LEFT JOIN cash_flow_payments p ON p.cash_flow_entry_id = e.id
   GROUP BY e.id, e.event_date, e.amount, e.currency_id,
-           e.source_type, e.source_id, e.is_income, e.description
+           e.source_type, e.source_id, e.is_income, e.description,
+           e.financing_rate, e.overdue_rate, e.minimum_payment
 ),
 open_debt_monthly AS (
   SELECT
@@ -71,6 +83,7 @@ open_debt_monthly AS (
     cfe.source_id,
     cfe.is_income,
     o.description,
+    0 AS financing_rate, 0 AS overdue_rate, 0 AS minimum_payment,
     COALESCE(SUM(p.amount) FILTER (WHERE p.plan_id IS NULL), 0.00)    AS paid_real,
     COALESCE(SUM(p.amount) FILTER (WHERE p.plan_id = :plan_id), 0.00) AS planned_amount
   FROM cash_flow_payments p
@@ -94,7 +107,8 @@ SELECT
   u.paid_real, u.planned_amount,
   u.amount         * COALESCE(cr.value, 1) AS amount_converted,
   u.paid_real      * COALESCE(cr.value, 1) AS paid_real_converted,
-  u.planned_amount * COALESCE(cr.value, 1) AS planned_amount_converted
+  u.planned_amount * COALESCE(cr.value, 1) AS planned_amount_converted,
+  u.financing_rate, u.overdue_rate, u.minimum_payment
 FROM unified u
 LEFT JOIN currency_rates cr
   ON cr.currency_id = u.currency_id
@@ -117,6 +131,9 @@ def _entry_fields(r) -> dict:
         amount_converted=r["amount_converted"],
         paid_real_converted=r["paid_real_converted"],
         planned_amount_converted=r["planned_amount_converted"],
+        financing_rate=r["financing_rate"],
+        overdue_rate=r["overdue_rate"],
+        minimum_payment=r["minimum_payment"],
     )
 
 

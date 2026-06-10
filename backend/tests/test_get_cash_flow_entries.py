@@ -229,6 +229,7 @@ def test_open_debt_projected_into_month(client, db_session, seed_cc_refs):
     debt = _open_debt(db_session, user)
     entry = _entry(db_session, user, source_type="deuda_abierta", source_id=debt.id, event_date=None, amount="30000.00")
     _pay(db_session, entry, amount="5000.00", plan_id=plan.id, planned_date=date(2026, 7, 15))  # planificado julio
+    _pay(db_session, entry, amount="1000.00", planned_date=date(2026, 7, 20))  # pago real en julio (guarda Bug 2)
     body = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()
     # madre sigue en open_debts; además una proyección en julio (expenses), mismo id, amount = planificado del mes
     assert len(body["open_debts"]) == 1
@@ -236,9 +237,11 @@ def test_open_debt_projected_into_month(client, db_session, seed_cc_refs):
     proj = jul["expenses"][0]
     assert proj["id"] == str(entry.id)
     assert proj["amount"] == "5000.00"
+    assert Decimal(proj["paid_real"]) == Decimal("1000.00")   # no intercambiado con financing_rate
+    assert Decimal(proj["financing_rate"]) == Decimal("0")    # open_debt: literal 0 (orden correcto del UNION)
     out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
     jul_obj = next(m for m in out.months if m.month == "2026-07")
-    assert jul_obj.pending_expenses == Decimal("5000.00")
+    assert jul_obj.pending_expenses == Decimal("4000.00")  # 5000 planificado − 1000 real
 
 
 def test_description_credit_card_and_soft_deleted_included(client, db_session, seed_cc_refs):
@@ -399,3 +402,42 @@ def test_past_month_zeroed_and_not_carried(client, db_session, seed_cc_refs):
     assert len(may.expenses) == 1                 # la row del mes pasado igual aparece
     assert jun.available == Decimal("10000.00")   # el mes actual arranca con el efectivo, sin arrastrar mayo
     assert jun.balance == Decimal("15000.00")     # (10000 + 5000) − (0 + 0)
+
+
+def test_timeline_exposes_card_rates(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 10), is_income=False, amount=Decimal("6000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("84.18"), overdue_rate=Decimal("97.60"), minimum_payment=Decimal("1006.00"),
+    ))
+    db_session.commit()
+    e = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"][0]["expenses"][0]
+    assert Decimal(e["financing_rate"]) == Decimal("84.18")
+    assert Decimal(e["overdue_rate"]) == Decimal("97.60")
+    assert Decimal(e["minimum_payment"]) == Decimal("1006.00")
+
+
+def test_timeline_card_null_minimum_and_zero_rates(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="1500.00")  # sin rates ni minimum
+    e = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"][0]["expenses"][0]
+    assert Decimal(e["financing_rate"]) == Decimal("0")   # COALESCE(.,0)
+    assert Decimal(e["overdue_rate"]) == Decimal("0")
+    assert e["minimum_payment"] is None                   # tarjeta: cfe.minimum_payment (null)
+
+
+def test_timeline_plan_movement_minimum_is_amount(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    _income_entry(db_session, user, plan, event_date=date(2026, 6, 5), amount="45000.00")
+    e = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"][0]["incomes"][0]
+    assert Decimal(e["financing_rate"]) == Decimal("0")
+    assert Decimal(e["overdue_rate"]) == Decimal("0")
+    assert Decimal(e["minimum_payment"]) == Decimal("45000.00")  # plan_movements: cfe.amount
