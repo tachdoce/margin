@@ -21,6 +21,10 @@ function balanceDisplay(x) {
 function isNegative(x) {
   return Number(x) < 0
 }
+function isSettled(e) {
+  // cubierta por pagos/cobros reales → no hay nada que hacer
+  return Number(e.amount) > 0 && Number(e.paid_real) >= Number(e.amount)
+}
 function toggleMonth(key) {
   openMonth.value = openMonth.value === key ? null : key
 }
@@ -197,9 +201,12 @@ async function delPay(p) {
 
           <div v-if="m.incomes.length">
             <div class="row"><label>Ingresos</label></div>
-            <div v-for="e in m.incomes" :key="e.id" class="entry">
+            <div v-for="e in m.incomes" :key="e.id" class="entry" :class="{ settled: isSettled(e) }">
               <div class="income-head">
-                <span class="income-desc">{{ e.description }} · {{ e.event_date }}</span>
+                <span class="income-desc">
+              {{ e.description }} · {{ e.event_date }}
+              <span v-if="isSettled(e)" class="badge badge-ok">✓ saldado</span>
+            </span>
                 <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
               </div>
               <p class="muted">cobrado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
@@ -209,9 +216,12 @@ async function delPay(p) {
 
           <div v-if="m.expenses.length">
             <div class="row"><label>Egresos</label></div>
-            <div v-for="e in m.expenses" :key="e.id" class="entry">
+            <div v-for="e in m.expenses" :key="e.id" class="entry" :class="{ settled: isSettled(e) }">
               <div class="income-head">
-                <span class="income-desc">{{ e.description }} · {{ e.event_date }}</span>
+                <span class="income-desc">
+              {{ e.description }} · {{ e.event_date }}
+              <span v-if="isSettled(e)" class="badge badge-ok">✓ saldado</span>
+            </span>
                 <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
               </div>
               <p class="muted">pagado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
@@ -234,9 +244,12 @@ async function delPay(p) {
       <!-- open_debts -->
       <div v-if="timeline?.open_debts?.length" class="income-card">
         <div class="row"><label>Para pagar cuando puedas</label></div>
-        <div v-for="e in timeline.open_debts" :key="e.id" class="entry">
+        <div v-for="e in timeline.open_debts" :key="e.id" class="entry" :class="{ settled: isSettled(e) }">
           <div class="income-head">
-            <span class="income-desc">{{ e.description }}</span>
+            <span class="income-desc">
+              {{ e.description }}
+              <span v-if="isSettled(e)" class="badge badge-ok">✓ saldado</span>
+            </span>
             <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
           </div>
           <p class="muted">pagado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
@@ -298,6 +311,14 @@ async function delPay(p) {
   border-top: 1px solid var(--border);
   padding-top: 8px;
   margin-top: 8px;
+}
+.entry.settled {
+  opacity: 0.55;
+}
+.badge-ok {
+  background: var(--positive);
+  color: #fff;
+  margin-left: 6px;
 }
 .modal-overlay {
   position: fixed;
