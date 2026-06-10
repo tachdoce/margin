@@ -1,10 +1,10 @@
 # timeline — arrastre en cascada del saldo impago de tarjeta — Diseño
 
 > El arrastre de tarjeta deja de ser **un solo paso** (mes anterior → actual) y pasa a ser una **cascada**: por
-> cada tarjeta y moneda, el saldo impago de un mes (+interés) se suma al `amount` del mes siguiente, y así hasta
-> el horizonte, **mientras exista una row** donde sumarlo. El "pago efectivo" de cada mes = `paid_real` si hay,
-> si no el **plan explícito**; si no hay ninguno, es **0** → arrastra todo el `amount` + interés (proyección
-> "si no hago nada").
+> cada tarjeta y moneda, el saldo impago de un mes (+interés) se suma al `amount` del mes siguiente, **mientras
+> exista una row** donde sumarlo (hasta el horizonte). El "pago efectivo" de cada mes = `paid_real` si hay, si no
+> el **plan explícito**, y **si no hay ninguno se asume que se paga la totalidad** (`payment = amount`) → ese mes
+> no arrastra. La cascada se **auto-limita**: se corta en el primer mes sin plan/pago.
 
 - **Fecha:** 2026-06-10
 - **Estado:** aprobado para implementar
@@ -26,7 +26,8 @@ del motor, que existen hasta el horizonte → siempre hay row donde arrastrar):
 carry_in = 0
 para cada row r de la serie (ascendente):
     amount      = r.base_amount + carry_in
-    payment     = r.paid_real if r.paid_real > 0 else r.planned_amount   # plan EXPLÍCITO (0 si no hay)
+    # pago efectivo: paid_real si hay; si no el plan explícito; si no hay plan, se paga la totalidad
+    payment     = r.paid_real if r.paid_real > 0 else (r.planned_amount if r.planned_amount > 0 else amount)
     minimum     = 15% * amount        (si carry_in > 0; si no, el minimum del motor)
     saldo       = max(0, amount - payment)
     tasa        = financing_rate if payment >= minimum else overdue_rate
@@ -34,10 +35,13 @@ para cada row r de la serie (ascendente):
     carry_in    = saldo + interés      # para la row siguiente de la serie
 ```
 
-- **`payment`** usa el **plan explícito** (`r.planned_amount` = suma de pagos planificados del plan, 0 si no
-  hay), **no** el fallback a `amount`. Sin plan ni pago ⇒ `payment = 0` ⇒ arrastra todo.
-- La cascada **se corta** cuando no hay más rows (último mes = horizonte) o cuando `saldo` llega a 0 (se pagó
-  todo).
+- **`payment`** = `paid_real` (si hay) → si no el **plan explícito** (`r.planned_amount`, suma de pagos
+  planificados del plan) → si tampoco hay plan, **el `amount` entero** (se asume pago total). O sea: igual al
+  `effective_planned` cuando no hubo pago real.
+- **Mes sin plan ni pago ⇒ `payment = amount` ⇒ `saldo = 0` ⇒ no arrastra.** Por eso la cascada se
+  **auto-limita**: solo encadena meses con pago real o plan explícito parcial, y se corta en el primero sin
+  plan (que "absorbe" lo arrastrado asumiendo pago total).
+- También **se corta** cuando no hay más rows (último mes = horizonte) o cuando `saldo` llega a 0.
 - Aplica **solo** a rows `tarjeta_credito`. El primer mes de la serie no tiene `carry_in`.
 
 `monthly_carry` se reusa, con el parámetro `paid_real` renombrado a **`payment`** (el cálculo no cambia: balance
@@ -65,8 +69,8 @@ Reemplaza el paso único (`prev_cards` + `if key == current_key`) por una **pre-
 
 ## 3. Lo que se mantiene
 
-- **Ocultar `amount == 0`**: igual (filtro de salida). Con la cascada, una serie con saldo impago hace que
-  **todos** sus meses futuros tengan `amount > 0` → se vuelven visibles (el snowball se ve hasta el horizonte).
+- **Ocultar `amount == 0`**: igual (filtro de salida). La cascada hace visibles los meses encadenados con
+  arrastre (hasta el mes que lo absorbe); los meses posteriores sin arrastre que queden en 0 siguen ocultos.
 - **`minimum_payment`** recomputado al 15% en cada mes con arrastre.
 - **`pending`/totales**: `pending = efectivo − pagado` por row; el `amount` arrastrado entra naturalmente.
 - **Persistencia**: nada se persiste; todo read-time.
@@ -75,8 +79,8 @@ Reemplaza el paso único (`prev_cards` + `if key == current_key`) por una **pre-
 
 ## 4. Consecuencias asumidas
 
-- **Proyección "si no hago nada"**: sin pagos ni planes, el saldo de cada tarjeta crece mes a mes con interés
-  hasta el horizonte (números grandes, a propósito). Planificar/pagar lo reduce.
+- **Cascada auto-limitada**: el arrastre encadena solo mientras haya pago real o plan explícito parcial; el
+  primer mes sin plan se asume pagado en su totalidad y corta la cascada (no hay snowball hasta el horizonte).
 - **No se valida doble conteo** entre `base_amount` (cuotas/resúmenes del motor) y el arrastre; se asume que el
   `base_amount` de cada mes es el cargo nuevo de ese mes y el arrastre es lo impago del anterior. (Validable con
   las tablas de datos reales.)
@@ -99,10 +103,12 @@ Reemplaza el paso único (`prev_cards` + `if key == current_key`) por una **pre-
   recibe (amount M+1 + interés). Verifica el encadenado.
 - **Plan parcial frena parte:** un mes con plan explícito < amount → arrastra solo `amount − plan` (+interés);
   el mínimo decide financiación/mora.
-- **Sin plan ni pago → arrastra todo:** `payment = 0` ⇒ `saldo = amount` ⇒ el mes siguiente recibe
-  `amount + interés` (mora, porque 0 < mínimo).
+- **Sin plan ni pago → no arrastra:** `payment = amount` ⇒ `saldo = 0` ⇒ ese mes absorbe lo arrastrado y no
+  pasa nada al siguiente (la cascada se corta ahí).
 - **Se salda → corta:** si `payment ≥ amount`, `carry = 0` y los meses siguientes no reciben arrastre de esa
   serie (vuelven a ocultarse si quedan en 0).
+- **Cascada multi-paso:** meses consecutivos con plan/pago parcial encadenan el arrastre (M→M+1→M+2) hasta el
+  primer mes sin plan, que lo absorbe.
 - **Unit `monthly_carry`:** sin cambios de valores (rename de parámetro).
 
 ---
