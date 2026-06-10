@@ -25,8 +25,10 @@ class MonthEntryOut(TimelineEntryOut):
 
 class MonthOut(BaseModel):
     month: str
-    total_income: Decimal
-    total_expenses: Decimal
+    available: Decimal
+    pending_income: Decimal
+    pending_expenses: Decimal
+    remaining_spending: Decimal
     balance: Decimal
     incomes: list[MonthEntryOut]
     expenses: list[MonthEntryOut]

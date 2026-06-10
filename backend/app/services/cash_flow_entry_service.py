@@ -1,12 +1,15 @@
+import calendar
 import uuid
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
+from app.models.cash_balance import CashBalance
 from app.models.cash_flow_entry import CashFlowEntry
+from app.models.currency_rate import CurrencyRate
 from app.models.plan import Plan
 from app.models.user import User
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
@@ -116,12 +119,39 @@ def _entry_fields(r) -> dict:
     )
 
 
-def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None) -> TimelineOut:
+def _effective_planned(r):
+    """Monto efectivo de la row: el planificado si lo hay, si no el proyectado (amount)."""
+    if r["planned_amount"] > 0:
+        return r["planned_amount"], r["planned_amount_converted"]
+    return r["amount"], r["amount_converted"]
+
+
+def _rate(db: Session, currency_id: int, on_date: date) -> Decimal:
+    r = db.get(CurrencyRate, (currency_id, on_date))
+    return r.value if r is not None else Decimal("1")
+
+
+def _available_now(db: Session, user: User, today: date) -> Decimal:
+    total = Decimal("0")
+    for cb in db.execute(select(CashBalance).where(CashBalance.user_id == user.id)).scalars():
+        total += cb.amount * _rate(db, cb.currency_id, today)
+    return total
+
+
+def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date | None = None) -> TimelineOut:
     if plan_id is None:
         raise AppError(ErrorCode.plan_id_required)
     plan = db.get(Plan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise AppError(ErrorCode.not_found)
+
+    today = today or date.today()
+    dial = plan.dial_amount * _rate(db, plan.dial_currency_id, today)
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    remaining_days = days_in_month - (today.day - 1)
+    dial_prorated = (dial * Decimal(remaining_days) / Decimal(days_in_month)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     rows = db.execute(_TIMELINE_SQL, {"user_id": user.id, "plan_id": plan_id}).mappings().all()
 
@@ -133,30 +163,46 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None) -> Timeline
             open_debts.append(TimelineEntryOut(**_entry_fields(r)))
             continue
         key = r["event_date"].strftime("%Y-%m")
-        b = buckets.setdefault(key, {"incomes": [], "expenses": [], "ti": Decimal("0"), "te": Decimal("0")})
-        entry = MonthEntryOut(event_date=r["event_date"], **_entry_fields(r))
+        b = buckets.setdefault(key, {"incomes": [], "expenses": [], "pi": Decimal("0"), "pe": Decimal("0")})
+        eff_pa, eff_pac = _effective_planned(r)
+        fields = _entry_fields(r)
+        fields["planned_amount"] = eff_pa
+        fields["planned_amount_converted"] = eff_pac
+        entry = MonthEntryOut(event_date=r["event_date"], **fields)
+        pending = eff_pac - r["paid_real_converted"]
         if r["is_income"]:
             b["incomes"].append(entry)
-            b["ti"] += r["amount_converted"]
+            b["pi"] += pending
         else:
             b["expenses"].append(entry)
-            b["te"] += r["amount_converted"]
+            b["pe"] += pending
 
     months: list[MonthOut] = []
-    for key in sorted(buckets):
+    prev_balance: Decimal | None = None
+    for i, key in enumerate(sorted(buckets)):
         b = buckets[key]
         b["incomes"].sort(key=lambda e: (e.event_date, str(e.id)))
         b["expenses"].sort(key=lambda e: (e.event_date, str(e.id)))
+        if i == 0:
+            available = _available_now(db, user, today)
+            remaining_spending = dial_prorated
+        else:
+            available = prev_balance
+            remaining_spending = dial
+        balance = (available + b["pi"]) - (b["pe"] + remaining_spending)
         months.append(
             MonthOut(
                 month=key,
-                total_income=b["ti"],
-                total_expenses=b["te"],
-                balance=b["ti"] - b["te"],
+                available=available,
+                pending_income=b["pi"],
+                pending_expenses=b["pe"],
+                remaining_spending=remaining_spending,
+                balance=balance,
                 incomes=b["incomes"],
                 expenses=b["expenses"],
             )
         )
+        prev_balance = balance
 
     return TimelineOut(months=months, open_debts=open_debts)
 

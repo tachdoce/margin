@@ -10,6 +10,7 @@ from app.models.credit_card import CreditCard
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
+from app.services import cash_flow_entry_service as svc
 
 
 def _headers(client, email="u@b.com"):
@@ -95,8 +96,8 @@ def test_timeline_groups_by_month_and_flow(client, db_session, seed_cc_refs):
     body = r.json()
     assert [m["month"] for m in body["months"]] == ["2026-06"]
     jun = body["months"][0]
-    assert jun["total_income"] == "45000.00"
-    assert jun["total_expenses"] == "6000.00"
+    assert jun["pending_income"] == "45000.00"
+    assert jun["pending_expenses"] == "6000.00"
     assert jun["balance"] == "39000.00"
     assert len(jun["incomes"]) == 1 and len(jun["expenses"]) == 1
     assert "is_income" not in jun["incomes"][0]  # no se serializa
@@ -148,7 +149,7 @@ def test_planned_of_other_plan_excluded(client, db_session, seed_cc_refs):
     entry = _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="6000.00")
     _pay(db_session, entry, amount="999.00", plan_id=other.id, planned_date=date(2026, 6, 10))
     e = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"][0]["expenses"][0]
-    assert e["planned_amount"] == "0.00"
+    assert e["planned_amount"] == "6000.00"  # sin planificado de este plan → cae a amount (el 999 de otro plan sigue excluido)
 
 
 def test_plan_entry_only_for_its_plan(client, db_session, seed_cc_refs):
@@ -214,6 +215,7 @@ def test_open_debt_madre_in_open_debts(client, db_session, seed_cc_refs):
     assert len(body["open_debts"]) == 1
     od = body["open_debts"][0]
     assert od["amount"] == "30000.00"
+    assert od["planned_amount"] == "0.00"  # las open_debts NO reciben el fallback
     assert "event_date" not in od  # las de open_debts no traen event_date
 
 
@@ -231,7 +233,7 @@ def test_open_debt_projected_into_month(client, db_session, seed_cc_refs):
     proj = jul["expenses"][0]
     assert proj["id"] == str(entry.id)
     assert proj["amount"] == "5000.00"
-    assert jul["total_expenses"] == "5000.00"
+    assert jul["pending_expenses"] == "5000.00"
 
 
 def test_description_credit_card_and_soft_deleted_included(client, db_session, seed_cc_refs):
@@ -280,3 +282,70 @@ def test_months_ordered(client, db_session, seed_cc_refs):
     _entry(db_session, user, source_type="tarjeta_credito", source_id=card.id, event_date=date(2026, 7, 1), amount="3.00")
     months = [m["month"] for m in client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"]]
     assert months == ["2026-06", "2026-07", "2026-08"]
+
+
+def test_planned_falls_back_to_amount_when_no_plan(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="6000.00")  # sin pago planificado
+    e = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()["months"][0]["expenses"][0]
+    assert e["planned_amount"] == "6000.00"            # cae a amount
+    assert e["planned_amount_converted"] == "6000.00"
+
+
+def test_pending_nets_paid_real(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)  # dial 0
+    e = _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="6000.00")
+    _pay(db_session, e, amount="2000.00")  # pago real
+    out = svc.get_timeline(db_session, user, plan.id)
+    jun = out.months[0]
+    assert jun.pending_expenses == Decimal("4000.00")  # efectivo 6000 − paid_real 2000
+
+
+def _cash(db_session, user, currency_id, amount):
+    from app.models.cash_balance import CashBalance
+    db_session.add(CashBalance(user_id=user.id, currency_id=currency_id, amount=Decimal(amount)))
+    db_session.commit()
+
+
+def _plan_dial(db_session, user, dial_amount):
+    plan = Plan(
+        user_id=user.id, name="Plan", is_default=False, is_engine_generated=False,
+        selected_at=datetime.now(timezone.utc), dial_amount=Decimal(dial_amount), dial_currency_id=1,
+    )
+    db_session.add(plan)
+    db_session.commit()
+    db_session.refresh(plan)
+    return plan
+
+
+def test_available_dial_and_balance_first_month(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan_dial(db_session, user, "42000.00")
+    _cash(db_session, user, 1, "38500.00")  # Peso (cotiza x1)
+    _income_entry(db_session, user, plan, event_date=date(2026, 6, 10), amount="90000.00")
+    _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="91225.70")
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = out.months[0]
+    assert jun.available == Decimal("38500.00")
+    assert jun.remaining_spending == Decimal("29400.00")  # (30-9)/30 * 42000
+    # balance = (38500 + 90000) − (91225.70 + 29400) = 7874.30
+    assert jun.balance == Decimal("7874.30")
+
+
+def test_available_carries_balance_to_next_month(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan_dial(db_session, user, "0")  # dial 0 aísla el arrastre
+    _cash(db_session, user, 1, "10000.00")
+    _income_entry(db_session, user, plan, event_date=date(2026, 6, 10), amount="5000.00")   # junio
+    _card_entry(db_session, user, event_date=date(2026, 7, 10), amount="3000.00")            # julio
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun, jul = out.months[0], out.months[1]
+    assert jun.balance == Decimal("15000.00")      # (10000 + 5000) − (0 + 0)
+    assert jul.available == Decimal("15000.00")    # arrastre
+    assert jul.balance == Decimal("12000.00")      # (15000 + 0) − (3000 + 0)
