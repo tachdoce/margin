@@ -467,6 +467,8 @@ def test_carryover_adds_prev_unpaid_to_current_month(client, db_session, seed_cc
     jun = next(m for m in out.months if m.month == "2026-06")
     row = next(e for e in jun.expenses if str(e.source_id) == str(card.id))
     assert row.amount == Decimal("810.80")            # 0 + arrastre (saldo 800 + interés 10.80)
+    assert row.planned_amount == Decimal("810.80")             # sin plan -> planned = amount (deuda entera)
+    assert row.planned_amount_converted == row.amount_converted
     assert row.minimum_payment == Decimal("121.62")   # 810.80 * 0.15 (mínimo del mes sobre el amount arrastrado)
     assert jun.pending_expenses == Decimal("810.80")  # el arrastre sube el pendiente (Peso, cotiza x1)
 
@@ -493,5 +495,52 @@ def test_carryover_skips_when_prev_settled(client, db_session, seed_cc_refs):
     db_session.commit()
     out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
     jun = next(m for m in out.months if m.month == "2026-06")
+    assert jun.expenses == []  # mes anterior saldado -> row en 0 oculta; el mes sigue (sin rows)
+
+
+def test_carryover_partial_plan_keeps_planned(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    prev = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(prev)
+    db_session.commit()
+    db_session.refresh(prev)
+    _pay(db_session, prev, amount="200.00")  # mayo: pagó el mínimo -> financiación; saldo 800 -> carry 810.80
+    jun_entry = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    )
+    db_session.add(jun_entry)
+    db_session.commit()
+    db_session.refresh(jun_entry)
+    _pay(db_session, jun_entry, amount="300.00", plan_id=plan.id, planned_date=date(2026, 6, 29))  # planifica pagar 300
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
     row = next(e for e in jun.expenses if str(e.source_id) == str(card.id))
-    assert row.amount == Decimal("0.00")  # mes anterior saldado -> sin arrastre
+    assert row.amount == Decimal("810.80")             # deuda arrastrada (saldo 800 + interés 10.80)
+    assert row.planned_amount == Decimal("300.00")     # planifica pagar solo una parte
+    assert jun.pending_expenses == Decimal("300.00")   # no se cuenta doble: pendiente = lo planificado
+
+
+def test_zero_amount_rows_hidden(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    # una row de relleno en el mes actual, sin arrastre ni plan -> amount 0 -> oculta
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next((m for m in out.months if m.month == "2026-06"), None)
+    assert jun is not None and jun.expenses == []  # el mes se muestra, sin la row en 0

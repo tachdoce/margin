@@ -139,11 +139,11 @@ def _entry_fields(r) -> dict:
     )
 
 
-def _effective_planned(r):
-    """Monto efectivo de la row: el planificado si lo hay, si no el proyectado (amount)."""
-    if r["planned_amount"] > 0:
-        return r["planned_amount"], r["planned_amount_converted"]
-    return r["amount"], r["amount_converted"]
+def _effective_planned(planned_amount, planned_amount_converted, amount, amount_converted):
+    """Monto efectivo: el planificado si lo hay, si no el proyectado (amount)."""
+    if planned_amount > 0:
+        return planned_amount, planned_amount_converted
+    return amount, amount_converted
 
 
 def _rate(db: Session, currency_id: int, on_date: date) -> Decimal:
@@ -156,37 +156,6 @@ def _available_now(db: Session, user: User, today: date) -> Decimal:
     for cb in db.execute(select(CashBalance).where(CashBalance.user_id == user.id)).scalars():
         total += cb.amount * _rate(db, cb.currency_id, today)
     return total
-
-
-def _apply_card_carryover(db: Session, buckets: dict, today: date, current_key: str) -> None:
-    """Suma a las rows de tarjeta del mes actual el saldo impago + interés del mes anterior
-    (misma tarjeta y moneda). Sube el amount/amount_converted de la row, recomputa su mínimo
-    al 15% del amount arrastrado, y sube el pending (pe) del mes."""
-    py, pm = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
-    prev_key = f"{py:04d}-{pm:02d}"
-    cur = buckets.get(current_key)
-    prev = buckets.get(prev_key)
-    if cur is None or prev is None:
-        return
-    prev_cards = {
-        (e.source_id, e.currency_id): e
-        for e in prev["expenses"]
-        if e.source_type == "tarjeta_credito"
-    }
-    for row in cur["expenses"]:
-        if row.source_type != "tarjeta_credito":
-            continue
-        p = prev_cards.get((row.source_id, row.currency_id))
-        if p is None:
-            continue
-        carry = monthly_carry(p.amount, p.paid_real, p.minimum_payment, p.financing_rate, p.overdue_rate)
-        if carry <= 0:
-            continue
-        carry_conv = carry * _rate(db, row.currency_id, row.event_date)
-        row.amount += carry
-        row.amount_converted += carry_conv
-        row.minimum_payment = (row.amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        cur["pe"] += carry_conv
 
 
 def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date | None = None) -> TimelineOut:
@@ -208,8 +177,19 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
 
     rows = db.execute(_TIMELINE_SQL, {"user_id": user.id, "plan_id": plan_id}).mappings().all()
 
+    current_key = today.strftime("%Y-%m")
+    py, pm = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
+    prev_key = f"{py:04d}-{pm:02d}"
+    prev_cards = {
+        (r["source_id"], r["currency_id"]): r
+        for r in rows
+        if r["event_date"] is not None
+        and r["source_type"] == "tarjeta_credito"
+        and r["event_date"].strftime("%Y-%m") == prev_key
+    }
+
     open_debts: list[TimelineEntryOut] = []
-    buckets: dict[str, dict] = {}  # "YYYY-MM" -> {"incomes": [], "expenses": [], "ti": Decimal, "te": Decimal}
+    buckets: dict[str, dict] = {}  # "YYYY-MM" -> {"incomes", "expenses", "pi", "pe"}
 
     for r in rows:
         if r["event_date"] is None:
@@ -217,8 +197,22 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
             continue
         key = r["event_date"].strftime("%Y-%m")
         b = buckets.setdefault(key, {"incomes": [], "expenses": [], "pi": Decimal("0"), "pe": Decimal("0")})
-        eff_pa, eff_pac = _effective_planned(r)
+        amount = r["amount"]
+        amount_converted = r["amount_converted"]
+        minimum_payment = r["minimum_payment"]
+        if key == current_key and r["source_type"] == "tarjeta_credito":
+            p = prev_cards.get((r["source_id"], r["currency_id"]))
+            if p is not None:
+                carry = monthly_carry(p["amount"], p["paid_real"], p["minimum_payment"], p["financing_rate"], p["overdue_rate"])
+                if carry > 0:
+                    amount = amount + carry
+                    amount_converted = amount_converted + carry * _rate(db, r["currency_id"], r["event_date"])
+                    minimum_payment = (amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        eff_pa, eff_pac = _effective_planned(r["planned_amount"], r["planned_amount_converted"], amount, amount_converted)
         fields = _entry_fields(r)
+        fields["amount"] = amount
+        fields["amount_converted"] = amount_converted
+        fields["minimum_payment"] = minimum_payment
         fields["planned_amount"] = eff_pa
         fields["planned_amount_converted"] = eff_pac
         entry = MonthEntryOut(event_date=r["event_date"], **fields)
@@ -230,8 +224,6 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
             b["expenses"].append(entry)
             b["pe"] += pending
 
-    current_key = today.strftime("%Y-%m")
-    _apply_card_carryover(db, buckets, today, current_key)
     months: list[MonthOut] = []
     prev_balance: Decimal | None = None
     for key in sorted(buckets):
@@ -263,12 +255,12 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
                 pending_expenses=pending_expenses,
                 remaining_spending=remaining_spending,
                 balance=balance,
-                incomes=b["incomes"],
-                expenses=b["expenses"],
+                incomes=[e for e in b["incomes"] if e.amount != 0],
+                expenses=[e for e in b["expenses"] if e.amount != 0],
             )
         )
 
-    return TimelineOut(months=months, open_debts=open_debts)
+    return TimelineOut(months=months, open_debts=[e for e in open_debts if e.amount != 0])
 
 
 EDITABLE_ENTRY_SOURCE_TYPES = (
