@@ -87,7 +87,7 @@ Las rows del timeline (meses y `open_debts`) suman 3 campos: `financing_rate`, `
 |---|---|
 | `app/services/cash_flow_entry_service.py` | `_TIMELINE_SQL` (3 campos en las 4 ramas + propagación + fix de orden en open_debt) y `_entry_fields` |
 | `app/schemas/cash_flow_entry.py` | `TimelineEntryOut`: + `financing_rate`, `overdue_rate`, `minimum_payment` |
-| `tests/test_get_cash_flow_entries.py` | tests de los 3 campos + caso `deuda_abierta` (guarda del orden) |
+| `tests/test_get_cash_flow_entries.py` | tests de los 3 campos + 2 asserts en `test_open_debt_projected_into_month` (guarda del orden) |
 
 ---
 
@@ -96,9 +96,10 @@ Las rows del timeline (meses y `open_debts`) suman 3 campos: `financing_rate`, `
 - **Tarjeta:** una row de `tarjeta_credito` con `financing_rate`/`overdue_rate`/`minimum_payment` sembrados →
   la respuesta los trae; una cuota sin `minimum_payment` → `minimum_payment` null.
 - **Ingreso:** una row de `ingreso` → `financing_rate == 0`, `overdue_rate == 0`, `minimum_payment == 0`.
-- **`deuda_abierta` (guarda del Bug 2):** una `deuda_abierta` con un pago real y uno planificado → en la
-  proyección mensual `financing_rate == 0` **y** `paid_real` correcto (no intercambiados por el orden del
-  `UNION ALL`).
+- **`deuda_abierta` (guarda del Bug 2):** **plegado en el test existente** `test_open_debt_projected_into_month`
+  (no un test nuevo). Ese test ya arma una `deuda_abierta` con un pago planificado; se le agrega un pago real y
+  dos asserts sobre la proyección mensual: `financing_rate == 0` **y** `paid_real` correcto (no intercambiados
+  por el orden del `UNION ALL`).
 - Los tests existentes del timeline siguen verdes (cambio aditivo). `today` inyectado donde haga falta.
 
 ---
@@ -106,4 +107,5 @@ Las rows del timeline (meses y `open_debts`) suman 3 campos: `financing_rate`, `
 ## 8. Plan de implementación (orientativo)
 
 Un slice (`feat/timeline-expose-rates`), TDD: test de los 3 campos (rojo) → `_TIMELINE_SQL` + `_entry_fields` +
-schema → test `deuda_abierta` → suite verde → cierre (squash-merge). Sin tocar Notion.
+schema → sumar la guarda del Bug 2 al test `test_open_debt_projected_into_month` → suite verde → cierre
+(squash-merge). Sin tocar Notion.
