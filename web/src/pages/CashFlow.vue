@@ -25,6 +25,13 @@ function isSettled(e) {
   // cubierta por pagos/cobros reales → no hay nada que hacer
   return Number(e.amount) > 0 && Number(e.paid_real) >= Number(e.amount)
 }
+const currentMonth = (() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+})()
+function isPastMonth(monthStr) {
+  return monthStr < currentMonth // "YYYY-MM" compara lexicográficamente
+}
 function toggleMonth(key) {
   openMonth.value = openMonth.value === key ? null : key
 }
@@ -192,7 +199,11 @@ async function delPay(p) {
       <div v-for="m in timeline?.months || []" :key="m.month" class="income-card">
         <div class="income-head" style="cursor: pointer" @click="toggleMonth(m.month)">
           <span class="income-desc">{{ openMonth === m.month ? '▾' : '▸' }} {{ m.month }}</span>
-          <span class="income-amount" :class="{ accent: !isNegative(m.balance), danger: isNegative(m.balance) }">
+          <span
+            v-if="!isPastMonth(m.month)"
+            class="income-amount"
+            :class="{ accent: !isNegative(m.balance), danger: isNegative(m.balance) }"
+          >
             balance {{ balanceDisplay(m.balance) }}
           </span>
         </div>
