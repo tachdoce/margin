@@ -544,3 +544,43 @@ def test_zero_amount_rows_hidden(client, db_session, seed_cc_refs):
     out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
     jun = next((m for m in out.months if m.month == "2026-06"), None)
     assert jun is not None and jun.expenses == []  # el mes se muestra, sin la row en 0
+
+
+def test_carryover_cascades_through_planned_months(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    # mayo: amount 1000, pagó 200 (>= mín 100 -> financiación 12) -> arrastra 810.80 a junio
+    may = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(may)
+    db_session.commit()
+    db_session.refresh(may)
+    _pay(db_session, may, amount="200.00")
+    # junio: relleno, plan parcial 300 -> arrastra el resto a julio
+    jun = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    )
+    db_session.add(jun)
+    db_session.commit()
+    db_session.refresh(jun)
+    _pay(db_session, jun, amount="300.00", plan_id=plan.id, planned_date=date(2026, 6, 29))
+    # julio: relleno, sin plan -> absorbe (pago total), no arrastra
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 7, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun_row = next(e for e in next(m for m in out.months if m.month == "2026-06").expenses if str(e.source_id) == str(card.id))
+    jul_row = next(e for e in next(m for m in out.months if m.month == "2026-07").expenses if str(e.source_id) == str(card.id))
+    assert jun_row.amount == Decimal("810.80")          # arrastre de mayo
+    assert jun_row.planned_amount == Decimal("300.00")  # plan parcial
+    assert jul_row.amount == Decimal("517.70")          # cascada: resto de junio (510.80) + interés (6.90)

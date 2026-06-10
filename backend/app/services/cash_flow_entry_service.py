@@ -178,15 +178,32 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
     rows = db.execute(_TIMELINE_SQL, {"user_id": user.id, "plan_id": plan_id}).mappings().all()
 
     current_key = today.strftime("%Y-%m")
-    py, pm = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
-    prev_key = f"{py:04d}-{pm:02d}"
-    prev_cards = {
-        (r["source_id"], r["currency_id"]): r
-        for r in rows
-        if r["event_date"] is not None
-        and r["source_type"] == "tarjeta_credito"
-        and r["event_date"].strftime("%Y-%m") == prev_key
-    }
+
+    # cascada del arrastre de tarjeta: por (tarjeta, moneda), en orden de event_date
+    carry_in: dict = {}       # row id -> arrastre que se suma a esa row
+    min_override: dict = {}   # row id -> minimum recomputado (15%) cuando hubo arrastre
+    series: dict = {}
+    for r in rows:
+        if r["event_date"] is not None and r["source_type"] == "tarjeta_credito":
+            series.setdefault((r["source_id"], r["currency_id"]), []).append(r)
+    for serie in series.values():
+        serie.sort(key=lambda r: r["event_date"])
+        cin = Decimal("0")
+        for r in serie:
+            carry_in[r["id"]] = cin
+            amount = r["amount"] + cin
+            if r["paid_real"] > 0:
+                payment = r["paid_real"]
+            elif r["planned_amount"] > 0:
+                payment = r["planned_amount"]
+            else:
+                payment = amount  # sin plan ni pago: se asume pago total -> no arrastra
+            if cin > 0:
+                minimum = (amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                min_override[r["id"]] = minimum
+            else:
+                minimum = r["minimum_payment"]
+            cin = monthly_carry(amount, payment, minimum, r["financing_rate"], r["overdue_rate"])
 
     open_debts: list[TimelineEntryOut] = []
     buckets: dict[str, dict] = {}  # "YYYY-MM" -> {"incomes", "expenses", "pi", "pe"}
@@ -200,14 +217,11 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
         amount = r["amount"]
         amount_converted = r["amount_converted"]
         minimum_payment = r["minimum_payment"]
-        if key == current_key and r["source_type"] == "tarjeta_credito":
-            p = prev_cards.get((r["source_id"], r["currency_id"]))
-            if p is not None:
-                carry = monthly_carry(p["amount"], p["paid_real"], p["minimum_payment"], p["financing_rate"], p["overdue_rate"])
-                if carry > 0:
-                    amount = amount + carry
-                    amount_converted = amount_converted + carry * _rate(db, r["currency_id"], r["event_date"])
-                    minimum_payment = (amount * PROJECTED_MINIMUM_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        cin = carry_in.get(r["id"], Decimal("0"))
+        if cin > 0:
+            amount = amount + cin
+            amount_converted = amount_converted + cin * _rate(db, r["currency_id"], r["event_date"])
+            minimum_payment = min_override[r["id"]]
         eff_pa, eff_pac = _effective_planned(r["planned_amount"], r["planned_amount_converted"], amount, amount_converted)
         fields = _entry_fields(r)
         fields["amount"] = amount
