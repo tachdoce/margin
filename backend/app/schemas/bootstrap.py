@@ -72,3 +72,4 @@ class Catalogs(BaseModel):
 class BootstrapResponse(BaseModel):
     version: str
     catalogs: Catalogs
+    editable_entry_source_types: list[str]

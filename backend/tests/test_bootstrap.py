@@ -77,3 +77,6 @@ def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
     assert all(it["code"] != "oculto" for it in catalogs["income_types"])
     # obligation_types: el visible=false no aparece
     assert all(ot["code"] != "oculto_ot" for ot in catalogs["obligation_types"])
+    # tipos editables expuestos desde el backend (single source of truth)
+    from app.services.cash_flow_entry_service import EDITABLE_ENTRY_SOURCE_TYPES
+    assert body["editable_entry_source_types"] == list(EDITABLE_ENTRY_SOURCE_TYPES)

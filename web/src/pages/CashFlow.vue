@@ -47,7 +47,7 @@ const payForm = reactive({ amount: '', note: '', planned: false, planned_date: '
 const editPayId = ref(null)
 const editPayDraft = reactive({ amount: '', note: '', planned_date: '' })
 
-const EDITABLE_TYPES = ['gasto']
+const editableTypes = ref([])
 
 function currencyName(id) {
   return catalogs.value.currencies?.find((c) => c.id === id)?.name ?? (id == null ? '' : `#${id}`)
@@ -63,6 +63,7 @@ async function loadCatalogs() {
     }
   }
   if (bs?.catalogs) catalogs.value = bs.catalogs
+  editableTypes.value = bs?.editable_entry_source_types ?? []
 }
 
 async function loadPlans() {
@@ -226,7 +227,17 @@ async function delPay(p) {
                 <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
               </div>
               <p class="muted">cobrado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
-              <button class="ghost" type="button" @click="openPayments(e)">Cobros</button>
+              <div v-if="editAmountId === e.id" class="field-row">
+                <input v-model="amountDraft" type="text" inputmode="decimal" />
+                <button class="primary" type="button" @click="saveAmount(e)">Guardar</button>
+                <button class="ghost" type="button" @click="cancelEditAmount">Cancelar</button>
+              </div>
+              <div v-else class="income-actions">
+                <button class="ghost" type="button" @click="openPayments(e)">Cobros</button>
+                <button v-if="editableTypes.includes(e.source_type)" class="ghost accent" type="button" @click="startEditAmount(e)">
+                  Editar monto
+                </button>
+              </div>
             </div>
           </div>
 
@@ -248,7 +259,7 @@ async function delPay(p) {
               </div>
               <div v-else class="income-actions">
                 <button class="ghost" type="button" @click="openPayments(e)">Pagos</button>
-                <button v-if="EDITABLE_TYPES.includes(e.source_type)" class="ghost accent" type="button" @click="startEditAmount(e)">
+                <button v-if="editableTypes.includes(e.source_type)" class="ghost accent" type="button" @click="startEditAmount(e)">
                   Editar monto
                 </button>
               </div>
@@ -269,7 +280,17 @@ async function delPay(p) {
             <span class="income-amount">{{ formatMoney(e.amount, e.currency_id) }}</span>
           </div>
           <p class="muted">pagado {{ formatMoney(e.paid_real, e.currency_id) }} · planificado {{ formatMoney(e.planned_amount, e.currency_id) }}</p>
-          <button class="ghost" type="button" @click="openPayments(e)">Pagos</button>
+          <div v-if="editAmountId === e.id" class="field-row">
+            <input v-model="amountDraft" type="text" inputmode="decimal" />
+            <button class="primary" type="button" @click="saveAmount(e)">Guardar</button>
+            <button class="ghost" type="button" @click="cancelEditAmount">Cancelar</button>
+          </div>
+          <div v-else class="income-actions">
+            <button class="ghost" type="button" @click="openPayments(e)">Pagos</button>
+            <button v-if="editableTypes.includes(e.source_type)" class="ghost accent" type="button" @click="startEditAmount(e)">
+              Editar monto
+            </button>
+          </div>
         </div>
       </div>
 
