@@ -12,6 +12,7 @@ from app.models.cash_flow_entry import CashFlowEntry
 from app.models.currency_rate import CurrencyRate
 from app.models.plan import Plan
 from app.models.user import User
+from app.models.user_financial_settings import UserFinancialSettings
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
 
 _TIMELINE_SQL = text(
@@ -152,6 +153,8 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
     dial_prorated = (dial * Decimal(remaining_days) / Decimal(days_in_month)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+    _settings = db.get(UserFinancialSettings, user.id)
+    monthly_need = _settings.monthly_need_amount if _settings is not None else None
 
     rows = db.execute(_TIMELINE_SQL, {"user_id": user.id, "plan_id": plan_id}).mappings().all()
 
@@ -190,7 +193,10 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
         else:
             if prev_balance is None:  # primer mes >= actual = ancla del efectivo
                 available = _available_now(db, user, today)
-                remaining_spending = dial_prorated if key == current_key else dial
+                if key == current_key:
+                    remaining_spending = monthly_need if monthly_need is not None else dial_prorated
+                else:
+                    remaining_spending = dial
             else:
                 available = prev_balance
                 remaining_spending = dial

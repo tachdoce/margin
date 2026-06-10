@@ -356,6 +356,31 @@ def test_available_carries_balance_to_next_month(client, db_session, seed_cc_ref
     assert jul.balance == Decimal("12000.00")      # (15000 + 0) − (3000 + 0)
 
 
+def _set_need(db_session, user, amount):
+    from app.models.user_financial_settings import UserFinancialSettings
+    db_session.add(UserFinancialSettings(user_id=user.id, monthly_need_amount=Decimal(amount)))
+    db_session.commit()
+
+
+def test_remaining_spending_uses_monthly_need_when_set(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan_dial(db_session, user, "42000.00")
+    _set_need(db_session, user, "5000.00")
+    _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="1000.00")
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    assert out.months[0].remaining_spending == Decimal("5000.00")  # el monto del usuario, no el prorrateo
+
+
+def test_remaining_spending_falls_back_to_prorated_dial(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan_dial(db_session, user, "42000.00")  # sin user_financial_settings
+    _card_entry(db_session, user, event_date=date(2026, 6, 10), amount="1000.00")
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    assert out.months[0].remaining_spending == Decimal("29400.00")  # (30-9)/30 * 42000
+
+
 def test_past_month_zeroed_and_not_carried(client, db_session, seed_cc_refs):
     headers = _headers(client)
     user = _last_user(db_session)

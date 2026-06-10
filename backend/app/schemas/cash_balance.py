@@ -15,3 +15,9 @@ class CashBalanceSetItem(BaseModel):
 
 class CashBalancesSet(BaseModel):
     balances: list[CashBalanceSetItem]
+    monthly_need_amount: Decimal | None = None
+
+
+class CashBalancesView(BaseModel):
+    balances: list[CashBalanceOut]
+    monthly_need_amount: Decimal | None
