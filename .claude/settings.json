@@ -21,7 +21,10 @@
       "Bash(git checkout -b:*)",
       "Bash(git mv:*)",
       "Bash(alembic:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(.venv/bin/alembic:*)",
+      "Bash(PYTHONPATH=. .venv/bin/alembic:*)"
     ]
   }
 }
