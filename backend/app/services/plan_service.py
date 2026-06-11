@@ -11,7 +11,9 @@ from app.models.cash_flow_payment import CashFlowPayment
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
-from app.schemas.plan import PlanCreate, PlanUpdate
+from app.schemas.plan import PlanCopyRequest, PlanCreate, PlanUpdate
+from app.services.cash_flow.plan_movements import materialize_plan_movement
+from app.services.cash_flow_payment_service import PLAN_ENTRY_TYPES
 from app.services.scoping import legal_tender_currency
 
 DEFAULT_PLAN_NAME = "Mi plan actual"
@@ -167,3 +169,115 @@ def delete_plan(db: Session, user: User, plan_id: uuid.UUID) -> None:
     # 4. el plan
     db.delete(plan)
     db.commit()
+
+
+def copy_plan(db: Session, user: User, plan_id: uuid.UUID, payload: PlanCopyRequest) -> Plan:
+    """Copia profunda de un plan excluyendo lo is_auto_generated. Plan nuevo (no seleccionado) +
+    movements re-materializados + pagos planificados re-enganchados. Transacción única."""
+    source = db.execute(
+        select(Plan).where(Plan.id == plan_id, Plan.user_id == user.id)
+    ).scalar_one_or_none()
+    if source is None:
+        raise AppError(ErrorCode.not_found)
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise AppError(ErrorCode.name_required, field="name")
+
+    new_plan = Plan(
+        user_id=user.id,
+        name=name,
+        is_default=False,
+        is_engine_generated=False,
+        selected_at=user.created_at,  # no seleccionado (igual que create_plan sin select)
+        dial_amount=source.dial_amount,
+        dial_currency_id=source.dial_currency_id,
+        goal_kind=source.goal_kind,
+        goal_amount=source.goal_amount,
+        goal_currency_id=source.goal_currency_id,
+    )
+    db.add(new_plan)
+    db.flush()
+
+    # movements no-auto: copiar + re-materializar
+    movement_map: dict[uuid.UUID, uuid.UUID] = {}
+    source_movements = db.execute(
+        select(PlanMovement)
+        .where(PlanMovement.plan_id == source.id, PlanMovement.is_auto_generated.is_(False))
+        .order_by(PlanMovement.created_at)
+    ).scalars().all()
+    for m in source_movements:
+        new_m = PlanMovement(
+            plan_id=new_plan.id,
+            kind=m.kind,
+            currency_id=m.currency_id,
+            description=m.description,
+            principal_amount=m.principal_amount,
+            start_date=m.start_date,
+            income_duration_months=m.income_duration_months,
+            installment_amount=m.installment_amount,
+            installment_start_date=m.installment_start_date,
+            total_installments=m.total_installments,
+            financing_rate=m.financing_rate,
+            overdue_rate=m.overdue_rate,
+            rates_add_vat=m.rates_add_vat,
+            is_auto_generated=False,
+        )
+        db.add(new_m)
+        db.flush()
+        movement_map[m.id] = new_m.id
+        materialize_plan_movement(db, new_m.id)
+
+    # índice de entries nuevas por (movement_nuevo, source_type, año, mes, currency)
+    new_entries: dict[tuple, uuid.UUID] = {}
+    if movement_map:
+        for e in db.execute(
+            select(CashFlowEntry).where(
+                CashFlowEntry.source_id.in_(movement_map.values()),
+                CashFlowEntry.source_type.in_(PLAN_ENTRY_TYPES),
+            )
+        ).scalars():
+            new_entries[(e.source_id, e.source_type, e.event_date.year, e.event_date.month, e.currency_id)] = e.id
+
+    # pagos planificados no-auto: copiar con re-enganche/descarte
+    source_payments = db.execute(
+        select(CashFlowPayment).where(
+            CashFlowPayment.plan_id == source.id,
+            CashFlowPayment.is_auto_generated.is_(False),
+        )
+    ).scalars().all()
+    entry_ids = {p.cash_flow_entry_id for p in source_payments}
+    entries_by_id = {
+        e.id: e
+        for e in db.execute(
+            select(CashFlowEntry).where(CashFlowEntry.id.in_(entry_ids))
+        ).scalars()
+    } if entry_ids else {}
+    for p in source_payments:
+        entry = entries_by_id.get(p.cash_flow_entry_id)
+        if entry is None:
+            continue
+        if entry.source_type in PLAN_ENTRY_TYPES:
+            new_m_id = movement_map.get(entry.source_id)
+            if new_m_id is None:
+                continue  # el movement era auto-generado: no está en la copia
+            target_id = new_entries.get(
+                (new_m_id, entry.source_type, entry.event_date.year, entry.event_date.month, entry.currency_id)
+            )
+            if target_id is None:
+                continue  # entry pasada: la re-materialización hoy→horizonte no la regeneró
+        else:
+            target_id = entry.id  # entry real/compartida: misma entry
+        db.add(
+            CashFlowPayment(
+                cash_flow_entry_id=target_id,
+                amount=p.amount,
+                note=p.note,
+                plan_id=new_plan.id,
+                planned_date=p.planned_date,
+            )
+        )
+
+    db.commit()
+    db.refresh(new_plan)
+    return new_plan

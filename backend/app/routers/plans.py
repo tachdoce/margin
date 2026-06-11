@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.schemas.plan import PlanCreate, PlanOut, PlanUpdate
+from app.schemas.plan import PlanCopyRequest, PlanCreate, PlanOut, PlanUpdate
 from app.services import plan_service
 
 router = APIRouter(tags=["plans"])
@@ -55,3 +55,13 @@ def delete_plan(
     db: Session = Depends(get_db),
 ) -> None:
     plan_service.delete_plan(db, user, plan_id)
+
+
+@router.post("/plans/{plan_id}/copy", response_model=PlanOut, status_code=status.HTTP_201_CREATED)
+def copy_plan(
+    plan_id: uuid.UUID,
+    payload: PlanCopyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PlanOut:
+    return PlanOut.from_model(plan_service.copy_plan(db, user, plan_id, payload))

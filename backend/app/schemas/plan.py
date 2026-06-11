@@ -22,6 +22,10 @@ class PlanUpdate(BaseModel):
     goal_amount: Decimal | None = None
 
 
+class PlanCopyRequest(BaseModel):
+    name: str
+
+
 class PlanOut(BaseModel):
     id: uuid.UUID
     name: str
