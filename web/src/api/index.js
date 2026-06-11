@@ -65,6 +65,9 @@ export const api = {
   selectPlan(id) {
     return request('POST', `/plans/${id}/select`)
   },
+  copyPlan(id, body) {
+    return request('POST', `/plans/${id}/copy`, body)
+  },
   listMovements(planId) {
     return request('GET', `/plans/${planId}/movements`)
   },
@@ -173,6 +176,19 @@ export const api = {
   },
   setBalances(body) {
     return request('PUT', '/cash-balances', body)
+  },
+  // --- compras (tarjeta o efectivo) con categoría ---
+  listPurchases() {
+    return request('GET', '/purchases')
+  },
+  createPurchase(body) {
+    return request('POST', '/purchases', body)
+  },
+  updatePurchase(id, body) {
+    return request('PATCH', `/purchases/${id}`, body)
+  },
+  deletePurchase(id) {
+    return request('DELETE', `/purchases/${id}`)
   },
 }
 

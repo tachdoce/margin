@@ -123,6 +123,18 @@ async function select(plan) {
   }
 }
 
+async function copy(plan) {
+  const name = window.prompt('Nombre de la copia', `Copia de ${plan.name}`)
+  if (name === null) return // canceló
+  error.value = ''
+  try {
+    await api.copyPlan(plan.id, { name })
+    await loadPlans()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
 async function remove(plan) {
   error.value = ''
   try {
@@ -217,6 +229,7 @@ async function remove(plan) {
           <button class="ghost accent" :disabled="plan.id === activeId" @click="select(plan)">
             {{ plan.id === activeId ? 'Activo' : 'Seleccionar' }}
           </button>
+          <button class="ghost" @click="copy(plan)">Copiar</button>
           <button
             v-if="!plan.is_default"
             class="ghost"
