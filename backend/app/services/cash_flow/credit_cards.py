@@ -12,6 +12,7 @@ from app.models.credit_card import CreditCard
 from app.models.credit_card_item_type import CreditCardItemType
 from app.models.credit_card_statement import CreditCardStatement
 from app.models.credit_card_statement_item import CreditCardStatementItem
+from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.cash_flow.constants import PROJECTED_MINIMUM_RATE
 from app.services.cash_flow.date_utils import compute_event_date
@@ -73,6 +74,33 @@ def _projection_sums(
             k = 1
             while add(k, item.currency_id, item.amount):
                 k += 1
+
+    return sums
+
+
+def _purchase_sums(
+    db: Session, card: CreditCard, statement: CreditCardStatement, horizon: date
+) -> dict[tuple[int, int, int], Decimal]:
+    """{(year, month, currency_id): monto} de las cuotas de compras de la tarjeta posteriores al
+    cierre del último resumen; primera cuota en M+1 (M = mes del closing_date). amount es por cuota."""
+    purchases = db.execute(
+        select(Purchase).where(
+            Purchase.credit_card_id == card.id,
+            Purchase.purchase_date > statement.closing_date,
+        )
+    ).scalars()
+
+    base_y, base_m = statement.closing_date.year, statement.closing_date.month
+    horizon_key = (horizon.year, horizon.month)
+    sums: dict[tuple[int, int, int], Decimal] = {}
+
+    for purchase in purchases:
+        for k in range(1, (purchase.total_installments or 1) + 1):
+            y, m = _add_months(base_y, base_m, k)
+            if (y, m) > horizon_key:
+                break
+            key = (y, m, purchase.currency_id)
+            sums[key] = sums.get(key, Decimal("0")) + purchase.amount
 
     return sums
 
@@ -202,6 +230,8 @@ def materialize_credit_card(
     if statement is not None:
         rate_pair = {local_id: (fin_local, over_local), usd_id: (fin_usd, over_usd)}
         sums = _projection_sums(db, statement, horizon)
+        for key, amount in _purchase_sums(db, card, statement, horizon).items():
+            sums[key] = sums.get(key, Decimal("0")) + amount
         _densify_projection(sums, statement, horizon, (local_id, usd_id))
         for (y, m, cid), amount in sums.items():
             fin, over = rate_pair.get(cid, (None, None))

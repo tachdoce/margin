@@ -10,6 +10,7 @@ from app.models.purchase import Purchase
 class PurchaseCreate(BaseModel):
     credit_card_id: uuid.UUID | None = None
     category_id: int | None = None
+    total_installments: int | None = None
     description: str | None = None
     purchase_date: date
     amount: Decimal
@@ -19,6 +20,7 @@ class PurchaseCreate(BaseModel):
 class PurchaseUpdate(BaseModel):
     credit_card_id: uuid.UUID | None = None
     category_id: int | None = None
+    total_installments: int | None = None
     description: str | None = None
     purchase_date: date | None = None
     amount: Decimal | None = None
@@ -29,6 +31,7 @@ class PurchaseOut(BaseModel):
     id: uuid.UUID
     credit_card_id: uuid.UUID | None
     category_id: int | None
+    total_installments: int | None
     description: str | None
     purchase_date: date
     amount: Decimal
@@ -42,6 +45,7 @@ class PurchaseOut(BaseModel):
             id=p.id,
             credit_card_id=p.credit_card_id,
             category_id=p.category_id,
+            total_installments=p.total_installments,
             description=p.description,
             purchase_date=p.purchase_date,
             amount=p.amount,

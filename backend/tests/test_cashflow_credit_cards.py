@@ -343,3 +343,92 @@ def test_projection_zero_fills_both_currencies(db_session, user_uy):
     assert keys[(2026, 6, 3)].amount == Decimal("0")       # usd siempre -> 0
     assert keys[(2026, 7, 1)].financing_rate == keys[(2026, 6, 1)].financing_rate  # tasas heredadas
     assert keys[(2026, 7, 1)].minimum_payment == Decimal("0.00")                    # 0 * 0.15
+
+
+def _add_purchase(db_session, user, card, *, amount="1000.00", purchase_date=date(2026, 5, 20),
+                  total_installments=None, currency_id=1):
+    from app.models.purchase import Purchase
+
+    p = Purchase(
+        user_id=user.id,
+        credit_card_id=card.id,
+        purchase_date=purchase_date,
+        amount=Decimal(amount),
+        currency_id=currency_id,
+        total_installments=total_installments,
+    )
+    db_session.add(p)
+    db_session.flush()
+    return p
+
+
+def test_purchase_post_closing_projects_m1(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))  # cierre 2026-05-13
+    _add_purchase(db_session, user_uy, card, amount="1000.00", purchase_date=date(2026, 5, 20))
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    keys = _by_key(db_session, card)
+    assert keys[(2026, 6, 1)].amount == Decimal("1000.00")  # cuotas NULL = 1 cuota
+    assert keys[(2026, 7, 1)].amount == Decimal("0")
+
+
+def test_purchase_installments_project_consecutive_months(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_purchase(db_session, user_uy, card, amount="500.00",
+                  purchase_date=date(2026, 5, 20), total_installments=3)
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    keys = _by_key(db_session, card)
+    for month in (6, 7, 8):
+        assert keys[(2026, month, 1)].amount == Decimal("500.00")
+    assert keys[(2026, 9, 1)].amount == Decimal("0")
+
+
+def test_purchase_on_closing_date_excluded(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_purchase(db_session, user_uy, card, purchase_date=date(2026, 5, 13))  # == cierre: capturada
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    assert _by_key(db_session, card)[(2026, 6, 1)].amount == Decimal("0")
+
+
+def test_purchase_other_card_excluded(db_session, user_uy):
+    from app.models.institution import Institution
+
+    db_session.add(Institution(id=2, country_code="UY", name="Itaú", visible=True))
+    db_session.flush()
+    card = _make_card(db_session, user_uy)
+    other = _make_card(db_session, user_uy, institution_id=2)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_purchase(db_session, user_uy, other, purchase_date=date(2026, 5, 20))
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    assert _by_key(db_session, card)[(2026, 6, 1)].amount == Decimal("0")
+
+
+def test_purchase_installments_capped_at_horizon(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_purchase(db_session, user_uy, card, amount="100.00",
+                  purchase_date=date(2026, 5, 20), total_installments=600)
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    keys = _by_key(db_session, card)
+    assert keys[(2027, 12, 1)].amount == Decimal("100.00")  # HORIZON = 2027-12-31
+    assert (2028, 1, 1) not in keys
+
+
+def test_purchase_usd_goes_to_usd_series(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _make_statement(db_session, card, total_usd=Decimal("0.00"))
+    _add_purchase(db_session, user_uy, card, amount="50.00",
+                  purchase_date=date(2026, 5, 20), currency_id=3)
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    keys = _by_key(db_session, card)
+    assert keys[(2026, 6, 3)].amount == Decimal("50.00")
+    assert keys[(2026, 6, 1)].amount == Decimal("0")
+
+
+def test_purchase_without_statement_not_projected(db_session, user_uy):
+    card = _make_card(db_session, user_uy)
+    _add_purchase(db_session, user_uy, card, purchase_date=date(2026, 5, 20))
+    materialize_credit_card(db_session, card.id, today=TODAY)
+    assert _orm_entries(db_session, card) == []  # gate actual: sin resumen no hay proyección

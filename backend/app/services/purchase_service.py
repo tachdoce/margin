@@ -9,9 +9,13 @@ from app.models.purchase import Purchase
 from app.models.purchase_category import PurchaseCategory
 from app.models.user import User
 from app.schemas.purchase import PurchaseCreate, PurchaseUpdate
+from app.services.cash_flow.credit_cards import materialize_credit_card
 from app.services.scoping import require_holdable_currency
 
-_EDITABLE = ("credit_card_id", "category_id", "description", "purchase_date", "amount", "currency_id")
+_EDITABLE = (
+    "credit_card_id", "category_id", "description", "purchase_date",
+    "amount", "currency_id", "total_installments",
+)
 _NOT_NULLABLE = ("purchase_date", "amount", "currency_id")
 
 
@@ -42,21 +46,35 @@ def _validate_category(db: Session, category_id: int | None) -> None:
         raise AppError(ErrorCode.purchase_category_invalid, field="category_id")
 
 
+def _validate_installments(total_installments: int | None, credit_card_id: uuid.UUID | None) -> None:
+    if total_installments is None:
+        return
+    if total_installments < 1:
+        raise AppError(ErrorCode.installments_invalid, field="total_installments")
+    if total_installments > 1 and credit_card_id is None:
+        raise AppError(ErrorCode.installments_invalid, field="total_installments")
+
+
 def create_purchase(db: Session, user: User, payload: PurchaseCreate) -> Purchase:
     require_holdable_currency(db, user, payload.currency_id)
     _validate_amount(payload.amount)
     _validate_credit_card(db, user, payload.credit_card_id)
     _validate_category(db, payload.category_id)
+    _validate_installments(payload.total_installments, payload.credit_card_id)
     p = Purchase(
         user_id=user.id,
         credit_card_id=payload.credit_card_id,
         category_id=payload.category_id,
+        total_installments=payload.total_installments,
         description=_clean_description(payload.description),
         purchase_date=payload.purchase_date,
         amount=payload.amount,
         currency_id=payload.currency_id,
     )
     db.add(p)
+    db.flush()
+    if p.credit_card_id is not None:
+        materialize_credit_card(db, p.credit_card_id)
     db.commit()
     db.refresh(p)
     return p
@@ -81,6 +99,7 @@ def _require_purchase(db: Session, user: User, purchase_id: uuid.UUID) -> Purcha
 
 def update_purchase(db: Session, user: User, purchase_id: uuid.UUID, payload: PurchaseUpdate) -> Purchase:
     p = _require_purchase(db, user, purchase_id)
+    old_card_id = p.credit_card_id
     fields = payload.model_fields_set
     if not fields & set(_EDITABLE):
         raise AppError(ErrorCode.empty_patch)
@@ -95,12 +114,15 @@ def update_purchase(db: Session, user: User, purchase_id: uuid.UUID, payload: Pu
     _validate_amount(final("amount"))
     _validate_credit_card(db, user, final("credit_card_id"))
     _validate_category(db, final("category_id"))
+    _validate_installments(final("total_installments"), final("credit_card_id"))
     for name in fields & set(_EDITABLE):
         value = getattr(payload, name)
         if name == "description":
             value = _clean_description(value)
         setattr(p, name, value)
     db.flush()
+    for card_id in {old_card_id, p.credit_card_id} - {None}:
+        materialize_credit_card(db, card_id)
     db.commit()
     db.refresh(p)
     return p
@@ -108,5 +130,9 @@ def update_purchase(db: Session, user: User, purchase_id: uuid.UUID, payload: Pu
 
 def delete_purchase(db: Session, user: User, purchase_id: uuid.UUID) -> None:
     p = _require_purchase(db, user, purchase_id)
+    card_id = p.credit_card_id
     db.delete(p)
+    db.flush()
+    if card_id is not None:
+        materialize_credit_card(db, card_id)
     db.commit()
