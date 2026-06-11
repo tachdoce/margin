@@ -20,6 +20,7 @@ function blankForm() {
     medio: 'efectivo', // 'efectivo' | 'tarjeta'
     credit_card_id: '',
     category_id: '',
+    total_installments: '',
     description: '',
     purchase_date: today(),
     currency_id: '',
@@ -66,6 +67,7 @@ function medioLabel(p) {
 
 function setMedio(m) {
   form.value.medio = m
+  if (m === 'efectivo') form.value.total_installments = ''
 }
 
 async function loadCatalogs() {
@@ -122,6 +124,7 @@ function startEdit(p) {
     medio: p.credit_card_id ? 'tarjeta' : 'efectivo',
     credit_card_id: p.credit_card_id ?? '',
     category_id: p.category_id ?? '',
+    total_installments: p.total_installments ?? '',
     description: p.description ?? '',
     purchase_date: p.purchase_date,
     currency_id: p.currency_id,
@@ -135,6 +138,7 @@ function buildBody() {
   return {
     credit_card_id: f.medio === 'tarjeta' ? f.credit_card_id || null : null,
     category_id: f.category_id === '' ? null : Number(f.category_id),
+    total_installments: f.medio === 'tarjeta' && f.total_installments !== '' ? Number(f.total_installments) : null,
     description: f.description,
     purchase_date: f.purchase_date,
     amount: String(f.amount),
@@ -212,6 +216,11 @@ async function remove(p) {
           <p v-if="!activeCards.length" class="muted">No tenés tarjetas activas.</p>
         </div>
 
+        <div v-if="form.medio === 'tarjeta'" class="field">
+          <label>Cuotas</label>
+          <input v-model="form.total_installments" type="number" min="1" placeholder="1" />
+        </div>
+
         <div class="field">
           <label>Categoría</label>
           <select v-model="form.category_id">
@@ -263,7 +272,10 @@ async function remove(p) {
           <span class="income-desc">{{ p.description || categoryName(p.category_id) }}</span>
           <span class="income-amount">{{ formatMoney(p.amount, p.currency_id) }}</span>
         </div>
-        <p class="muted">{{ categoryName(p.category_id) }} · {{ medioLabel(p) }} · {{ p.purchase_date }}</p>
+        <p class="muted">
+          {{ categoryName(p.category_id) }} · {{ medioLabel(p) }} · {{ p.purchase_date }}
+          <span v-if="p.total_installments > 1"> · {{ p.total_installments }}x cuotas</span>
+        </p>
         <div class="income-actions">
           <button class="ghost" @click="startEdit(p)">Editar</button>
           <button class="ghost danger" @click="remove(p)">Borrar</button>
