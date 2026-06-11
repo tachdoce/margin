@@ -8,11 +8,13 @@ from app.models.income_type import IncomeType
 from app.models.institution import Institution
 from app.models.obligation_type import ObligationType
 from app.models.priority_level import PriorityLevel
+from app.models.purchase_category import PurchaseCategory
 from app.models.review_finding_code import ReviewFindingCode
 
 CATALOG_KEYS = {
     "currencies", "obligation_types", "income_types", "priority_levels",
     "institutions", "review_finding_codes", "credit_card_networks", "credit_card_item_types",
+    "purchase_categories",
 }
 
 
@@ -38,6 +40,8 @@ def _seed_catalogs(db_session):
         ReviewFindingCode(code="amount_above_threshold", message="x"),
         CreditCardNetwork(id=1, country_code="UY", code="visa", name="Visa"),
         CreditCardItemType(id=1, code="compra", name="Compra", description="x"),
+        PurchaseCategory(id=1, code="comida", name="Comida", emoji="🍔"),
+        PurchaseCategory(id=2, code="supermercado", name="Supermercado", emoji="🛒"),
     ])
     db_session.flush()
 
@@ -80,3 +84,13 @@ def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
     # tipos editables expuestos desde el backend (single source of truth)
     from app.services.cash_flow_entry_service import EDITABLE_ENTRY_SOURCE_TYPES
     assert body["editable_entry_source_types"] == list(EDITABLE_ENTRY_SOURCE_TYPES)
+
+
+def test_bootstrap_purchase_categories(client, db_session, seed_uy):
+    _seed_catalogs(db_session)
+    token = _register_token(client)
+    catalogs = client.get("/bootstrap", headers={"Authorization": f"Bearer {token}"}).json()["catalogs"]
+    assert catalogs["purchase_categories"] == [
+        {"id": 1, "code": "comida", "name": "Comida", "emoji": "🍔"},
+        {"id": 2, "code": "supermercado", "name": "Supermercado", "emoji": "🛒"},
+    ]

@@ -8,6 +8,7 @@ from app.models.income_type import IncomeType
 from app.models.institution import Institution
 from app.models.obligation_type import ObligationType
 from app.models.priority_level import PriorityLevel
+from app.models.purchase_category import PurchaseCategory
 from app.models.review_finding_code import ReviewFindingCode
 from app.models.user import User
 
@@ -40,5 +41,8 @@ def build_catalogs(db: Session, user: User) -> dict:
         ),
         "credit_card_item_types": list(
             db.execute(select(CreditCardItemType).order_by(CreditCardItemType.id)).scalars()
+        ),
+        "purchase_categories": list(
+            db.execute(select(PurchaseCategory).order_by(PurchaseCategory.id)).scalars()
         ),
     }

@@ -58,6 +58,13 @@ class CreditCardItemTypeOut(_Read):
     description: str
 
 
+class PurchaseCategoryOut(_Read):
+    id: int
+    code: str
+    name: str
+    emoji: str
+
+
 class Catalogs(BaseModel):
     currencies: list[CurrencyOut]
     obligation_types: list[ObligationTypeOut]
@@ -67,6 +74,7 @@ class Catalogs(BaseModel):
     review_finding_codes: list[ReviewFindingCodeOut]
     credit_card_networks: list[CreditCardNetworkOut]
     credit_card_item_types: list[CreditCardItemTypeOut]
+    purchase_categories: list[PurchaseCategoryOut]
 
 
 class BootstrapResponse(BaseModel):

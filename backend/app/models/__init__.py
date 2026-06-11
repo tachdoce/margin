@@ -25,3 +25,5 @@ from app.models.cash_flow_payment import CashFlowPayment  # noqa: F401
 from app.models.financing import Financing  # noqa: F401
 from app.models.cash_balance import CashBalance  # noqa: F401
 from app.models.user_financial_settings import UserFinancialSettings  # noqa: F401
+from app.models.purchase_category import PurchaseCategory  # noqa: F401
+from app.models.purchase import Purchase  # noqa: F401

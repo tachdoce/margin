@@ -77,6 +77,8 @@ class ErrorCode(Enum):
     usage_preference_invalid = (422, "Preferencia de uso no válida.")
     amount_negative = (422, "El monto no puede ser negativo.")
     duplicate_currency = (422, "No repitas la misma moneda.")
+    credit_card_invalid = (422, "Tarjeta no válida.")
+    purchase_category_invalid = (422, "Categoría no válida.")
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
