@@ -8,11 +8,20 @@ import { formatMoney } from '../format'
 const route = useRoute()
 const planId = route.params.id
 
+// kinds creables por el form genérico (tarjetazo se crea aparte, desde una tarjeta)
 const KINDS = [
   { value: 'ingreso', label: 'Ingreso' },
   { value: 'deuda_informal', label: 'Deuda informal' },
   { value: 'prestamo', label: 'Préstamo' },
+  { value: 'deuda', label: 'Deuda' },
 ]
+const LABELS = {
+  ingreso: 'Ingreso',
+  deuda_informal: 'Deuda informal',
+  prestamo: 'Préstamo',
+  deuda: 'Deuda',
+  tarjetazo: 'Tarjetazo',
+}
 
 const movements = ref([])
 const catalogs = ref({ currencies: [] })
@@ -45,10 +54,13 @@ function defaultCurrency() {
 }
 
 function kindLabel(kind) {
-  return KINDS.find((k) => k.value === kind)?.label ?? kind
+  return LABELS[kind] ?? kind
 }
 function currencyName(id) {
   return catalogs.value.currencies?.find((c) => c.id === id)?.name ?? `#${id}`
+}
+function isDebtKind(kind) {
+  return kind === 'deuda' || kind === 'tarjetazo'
 }
 
 async function loadCatalogs() {
@@ -93,18 +105,33 @@ onMounted(async () => {
   await loadMovements()
 })
 
+function installmentSummary(m) {
+  const fin = m.financing_rate ?? '—'
+  const mora = m.overdue_rate ?? '—'
+  const vat = m.rates_add_vat ? ' (+IVA)' : ''
+  return `Cuota ${m.installment_amount} ×${m.total_installments} desde ${m.installment_start_date} · tasas ${fin}/${mora}${vat}`
+}
+
 function movementSummary(m) {
   if (m.kind === 'ingreso') {
     const dur = m.income_duration_months == null ? 'recurrente' : `${m.income_duration_months} mes(es)`
     return `Duración: ${dur} · desde ${m.start_date}`
   }
   if (m.kind === 'prestamo') {
-    const fin = m.financing_rate ?? '—'
-    const mora = m.overdue_rate ?? '—'
-    const vat = m.rates_add_vat ? ' (+IVA)' : ''
-    return `Cuota ${m.installment_amount} ×${m.total_installments} desde ${m.installment_start_date} · tasas ${fin}/${mora}${vat} · desembolso ${m.start_date}`
+    return `${installmentSummary(m)} · desembolso ${m.start_date}`
+  }
+  if (isDebtKind(m.kind)) {
+    return installmentSummary(m)
   }
   return `Desde ${m.start_date}`
+}
+
+// el monto grande de la fila: para deudas (principal 0) mostramos la cuota ×N
+function headAmount(m) {
+  if (isDebtKind(m.kind)) {
+    return `${formatMoney(m.installment_amount, m.currency_id)} ×${m.total_installments}`
+  }
+  return formatMoney(m.principal_amount, m.currency_id)
 }
 
 function startCreate() {
@@ -135,6 +162,20 @@ function startEdit(m) {
 
 function buildBody() {
   const f = form.value
+  // deuda: el backend fija principal=0 y start_date=primera cuota; solo van cuotas y tasas
+  if (f.kind === 'deuda') {
+    return {
+      kind: 'deuda',
+      currency_id: Number(f.currency_id),
+      description: f.description || null,
+      installment_amount: f.installment_amount === '' ? null : String(f.installment_amount),
+      installment_start_date: f.installment_start_date || null,
+      total_installments: f.total_installments === '' ? null : Number(f.total_installments),
+      financing_rate: f.financing_rate === '' ? null : String(f.financing_rate),
+      overdue_rate: f.overdue_rate === '' ? null : String(f.overdue_rate),
+      rates_add_vat: f.rates_add_vat,
+    }
+  }
   const body = {
     kind: f.kind,
     currency_id: Number(f.currency_id),
@@ -181,6 +222,7 @@ async function remove(m) {
     error.value = e.message
   }
 }
+
 </script>
 
 <template>
@@ -222,12 +264,12 @@ async function remove(m) {
           <input v-model="form.description" type="text" placeholder="Opcional" />
         </div>
 
-        <div class="field">
+        <div v-if="form.kind !== 'deuda'" class="field">
           <label>{{ form.kind === 'prestamo' ? 'Monto del préstamo' : 'Monto' }}</label>
           <input v-model="form.principal_amount" type="text" inputmode="decimal" placeholder="45000.00" />
         </div>
 
-        <div class="field">
+        <div v-if="form.kind !== 'deuda'" class="field">
           <label>{{ form.kind === 'prestamo' ? 'Fecha de desembolso' : 'Fecha de inicio' }}</label>
           <input v-model="form.start_date" type="date" />
         </div>
@@ -238,8 +280,8 @@ async function remove(m) {
           <input v-model="form.income_duration_months" type="number" min="1" placeholder="recurrente" />
         </div>
 
-        <!-- prestamo -->
-        <template v-if="form.kind === 'prestamo'">
+        <!-- prestamo y deuda: cuotas -->
+        <template v-if="form.kind === 'prestamo' || form.kind === 'deuda'">
           <div class="field">
             <label>Monto de la cuota</label>
             <input v-model="form.installment_amount" type="text" inputmode="decimal" placeholder="5000.00" />
@@ -285,7 +327,7 @@ async function remove(m) {
             {{ m.description || kindLabel(m.kind) }}
             <span class="badge">{{ kindLabel(m.kind) }}</span>
           </span>
-          <span class="income-amount">{{ formatMoney(m.principal_amount, m.currency_id) }}</span>
+          <span class="income-amount">{{ headAmount(m) }}</span>
         </div>
         <p class="muted">{{ movementSummary(m) }}</p>
         <div class="income-actions">

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import { api, getBootstrap, ensureBootstrap } from '../api'
 import { formatMoney } from '../format'
@@ -12,6 +12,19 @@ const openMonth = ref(null) // acordeón: solo un mes abierto a la vez
 const error = ref('')
 const notice = ref('')
 const planning = ref(false)
+
+// tarjetazos (deuda de impulso desde una tarjeta)
+const cards = ref([])
+const tjCreateOpen = ref(false)
+const tjListOpen = ref(false)
+const tjList = ref([])
+const clearingTj = ref(false)
+const tjForm = reactive({ credit_card_id: '', currency_id: '', installment_amount: '', total_installments: '' })
+
+const payableCurrencies = computed(() =>
+  (catalogs.value.currencies || []).filter((c) => c.allowed_in_credit_card),
+)
+const activeCards = computed(() => cards.value.filter((c) => !c.deleted_at))
 
 function money0(x) {
   return Math.round(Number(x)) // sin centavos
@@ -108,11 +121,95 @@ async function runPlanning() {
   }
 }
 
+async function loadCards() {
+  try {
+    cards.value = (await api.listCreditCards()).credit_cards
+  } catch {
+    cards.value = []
+  }
+}
+
 onMounted(async () => {
   await loadCatalogs()
   await loadPlans()
+  await loadCards()
   await loadTimeline()
 })
+
+// --- tarjetazos ---
+function tjDefaultCurrency() {
+  const list = payableCurrencies.value
+  return (list.find((c) => c.is_legal_tender) ?? list[0])?.id ?? ''
+}
+
+function cardLabel(card) {
+  const inst = catalogs.value.institutions?.find((i) => i.id === card.institution_id)?.name ?? '—'
+  const net = catalogs.value.credit_card_networks?.find((n) => n.id === card.card_network_id)?.name ?? '—'
+  return `${inst} ${net}`
+}
+
+function openTjCreate() {
+  Object.assign(tjForm, { credit_card_id: '', currency_id: tjDefaultCurrency(), installment_amount: '', total_installments: '' })
+  error.value = ''
+  notice.value = ''
+  tjCreateOpen.value = true
+}
+
+async function submitTarjetazo() {
+  error.value = ''
+  try {
+    await api.createTarjetazo(selectedPlanId.value, {
+      credit_card_id: tjForm.credit_card_id || null,
+      currency_id: Number(tjForm.currency_id),
+      installment_amount: tjForm.installment_amount === '' ? null : String(tjForm.installment_amount),
+      total_installments: tjForm.total_installments === '' ? null : Number(tjForm.total_installments),
+    })
+    tjCreateOpen.value = false
+    notice.value = 'Tarjetazo agregado.'
+    await loadTimeline()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function openTjList() {
+  error.value = ''
+  notice.value = ''
+  try {
+    const movs = await api.listMovements(selectedPlanId.value)
+    tjList.value = movs.filter((m) => m.kind === 'tarjetazo')
+    tjListOpen.value = true
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function removeTarjetazo(m) {
+  error.value = ''
+  try {
+    await api.deleteMovement(selectedPlanId.value, m.id)
+    tjList.value = tjList.value.filter((x) => x.id !== m.id)
+    await loadTimeline()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function clearTarjetazos() {
+  if (clearingTj.value) return
+  error.value = ''
+  notice.value = ''
+  clearingTj.value = true
+  try {
+    const { deleted } = await api.deleteTarjetazos(selectedPlanId.value)
+    notice.value = `Tarjetazos borrados: ${deleted}.`
+    await loadTimeline()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    clearingTj.value = false
+  }
+}
 
 // --- editar monto de una entry (gasto) ---
 function startEditAmount(entry) {
@@ -215,6 +312,13 @@ async function delPay(p) {
         <button class="primary" :disabled="!selectedPlanId || planning" @click="runPlanning">
           {{ planning ? 'Organizando…' : 'Organizar mis pagos' }}
         </button>
+        <div class="income-actions">
+          <button class="ghost" :disabled="!selectedPlanId" @click="openTjCreate">Crear tarjetazo</button>
+          <button class="ghost" :disabled="!selectedPlanId" @click="openTjList">Mostrar tarjetazos</button>
+          <button class="ghost" :disabled="!selectedPlanId || clearingTj" @click="clearTarjetazos">
+            {{ clearingTj ? 'Limpiando…' : 'Limpiar tarjetazos' }}
+          </button>
+        </div>
       </div>
 
       <p v-if="timeline && !timeline.months.length && !timeline.open_debts.length" class="muted">
@@ -357,6 +461,60 @@ async function delPay(p) {
           <label class="check"><input v-model="payForm.planned" type="checkbox" /> Planificado (en este plan)</label>
           <div v-if="payForm.planned" class="field"><label>Fecha agendada</label><input v-model="payForm.planned_date" type="date" /></div>
           <button class="primary" type="button" @click="submitPayment">Registrar</button>
+        </div>
+      </div>
+
+      <!-- modal: crear tarjetazo -->
+      <div v-if="tjCreateOpen" class="modal-overlay" @click.self="tjCreateOpen = false">
+        <div class="modal">
+          <div class="row">
+            <label>Crear tarjetazo</label>
+            <button class="ghost" type="button" @click="tjCreateOpen = false">✕</button>
+          </div>
+          <div class="field">
+            <label>Tarjeta</label>
+            <select v-model="tjForm.credit_card_id">
+              <option value="" disabled>Elegí una tarjeta</option>
+              <option v-for="c in activeCards" :key="c.id" :value="c.id">{{ cardLabel(c) }}</option>
+            </select>
+            <p v-if="!activeCards.length" class="muted">No tenés tarjetas activas.</p>
+          </div>
+          <div class="field">
+            <label>Moneda</label>
+            <select v-model="tjForm.currency_id">
+              <option value="" disabled>Elegí una moneda</option>
+              <option v-for="c in payableCurrencies" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Monto de la cuota</label>
+            <input v-model="tjForm.installment_amount" type="text" inputmode="decimal" placeholder="3000.00" />
+          </div>
+          <div class="field">
+            <label>Cantidad de cuotas</label>
+            <input v-model="tjForm.total_installments" type="number" min="1" placeholder="6" />
+          </div>
+          <button class="primary" type="button" @click="submitTarjetazo">Agregar</button>
+        </div>
+      </div>
+
+      <!-- modal: mostrar tarjetazos -->
+      <div v-if="tjListOpen" class="modal-overlay" @click.self="tjListOpen = false">
+        <div class="modal">
+          <div class="row">
+            <label>Tarjetazos del plan</label>
+            <button class="ghost" type="button" @click="tjListOpen = false">✕</button>
+          </div>
+          <p v-if="!tjList.length" class="muted">Este plan no tiene tarjetazos.</p>
+          <div v-for="m in tjList" :key="m.id" class="item-row" style="cursor: default">
+            <span class="item-desc">
+              {{ m.description || 'Tarjetazo' }}
+              <span class="muted">· {{ formatMoney(m.installment_amount, m.currency_id) }} ×{{ m.total_installments }} desde {{ m.installment_start_date }}</span>
+            </span>
+            <span class="item-meta">
+              <button class="ghost danger" type="button" @click="removeTarjetazo(m)">Borrar</button>
+            </span>
+          </div>
         </div>
       </div>
     </div>

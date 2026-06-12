@@ -86,6 +86,12 @@ export const api = {
   deleteMovement(planId, id) {
     return request('DELETE', `/plans/${planId}/movements/${id}`)
   },
+  createTarjetazo(planId, body) {
+    return request('POST', `/plans/${planId}/movements/tarjetazos`, body)
+  },
+  deleteTarjetazos(planId) {
+    return request('DELETE', `/plans/${planId}/movements/tarjetazos`)
+  },
   listExpenses() {
     return request('GET', '/expenses')
   },
