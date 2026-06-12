@@ -33,6 +33,7 @@ class MonthOut(BaseModel):
     pending_expenses: Decimal
     remaining_spending: Decimal
     balance: Decimal
+    generated_interest: Decimal
     incomes: list[MonthEntryOut]
     expenses: list[MonthEntryOut]
 
@@ -40,6 +41,8 @@ class MonthOut(BaseModel):
 class TimelineOut(BaseModel):
     months: list[MonthOut]
     open_debts: list[TimelineEntryOut]
+    healthy_debt_month: str | None = None
+    goal_reached_month: str | None = None
 
 
 class SourceEntryOut(BaseModel):

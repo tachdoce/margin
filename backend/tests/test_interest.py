@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.services.cash_flow.interest import monthly_carry
+from app.services.cash_flow.interest import monthly_carry, monthly_interest
 
 
 def test_carry_overdue_when_minimum_unpaid():
@@ -20,3 +20,26 @@ def test_carry_zero_when_settled():
 def test_carry_none_minimum_is_overdue():
     # minimum None -> mora 24%; saldo 800; interés 800*0.24/12*1.35 = 21.60
     assert monthly_carry(Decimal("1000"), Decimal("200"), None, Decimal("12"), Decimal("24")) == Decimal("821.60")
+
+
+def test_monthly_interest_financiacion():
+    # pago 200 >= mínimo 100 -> financiación 12%: saldo 800 * 0.12/12 * 1.35 = 10.80
+    assert monthly_interest(Decimal("1000"), Decimal("200"), Decimal("100"),
+                            Decimal("12"), Decimal("24")) == Decimal("10.80")
+
+
+def test_monthly_interest_mora():
+    # pago 50 < mínimo 100 -> mora 24%: saldo 950 * 0.24/12 * 1.35 = 25.65
+    assert monthly_interest(Decimal("1000"), Decimal("50"), Decimal("100"),
+                            Decimal("12"), Decimal("24")) == Decimal("25.65")
+
+
+def test_monthly_interest_saldado():
+    assert monthly_interest(Decimal("1000"), Decimal("1000"), Decimal("100"),
+                            Decimal("12"), Decimal("24")) == Decimal("0.00")
+
+
+def test_monthly_carry_sin_regresion():
+    # comportamiento previo intacto: saldo 800 + interés 10.80 = 810.80
+    assert monthly_carry(Decimal("1000"), Decimal("200"), Decimal("100"),
+                         Decimal("12"), Decimal("24")) == Decimal("810.80")

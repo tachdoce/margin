@@ -15,7 +15,7 @@ from app.models.user import User
 from app.models.user_financial_settings import UserFinancialSettings
 from app.schemas.cash_flow_entry import MonthEntryOut, MonthOut, TimelineEntryOut, TimelineOut
 from app.services.cash_flow.constants import PROJECTED_MINIMUM_RATE
-from app.services.cash_flow.interest import monthly_carry
+from app.services.cash_flow.interest import monthly_carry, monthly_interest
 
 _TIMELINE_SQL = text(
     """
@@ -158,6 +158,38 @@ def _available_now(db: Session, user: User, today: date) -> Decimal:
     return total
 
 
+def _healthy_debt_month(months: list[MonthOut], current_key: str) -> str | None:
+    """Mes tras el último con generated_interest > 0 (entre los meses activos). None si el
+    interés llega hasta el final del horizonte; primer mes activo si nunca hubo interés."""
+    active = [m for m in months if m.month >= current_key]
+    if not active:
+        return None
+    last = None
+    for i, m in enumerate(active):
+        if m.generated_interest > 0:
+            last = i
+    if last is None:
+        return active[0].month
+    if last + 1 >= len(active):
+        return None
+    return active[last + 1].month
+
+
+def _goal_reached_month(
+    months: list[MonthOut], current_key: str, healthy_month: str | None, goal_local: Decimal | None
+) -> str | None:
+    """Primer mes activo >= healthy_month con balance >= goal_local. None si no hay objetivo,
+    no hay deuda sana, o no se alcanza."""
+    if healthy_month is None or goal_local is None:
+        return None
+    for m in months:
+        if m.month < current_key:
+            continue
+        if m.month >= healthy_month and m.balance >= goal_local:
+            return m.month
+    return None
+
+
 def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date | None = None) -> TimelineOut:
     if plan_id is None:
         raise AppError(ErrorCode.plan_id_required)
@@ -182,6 +214,7 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
     # cascada del arrastre de tarjeta: por (tarjeta, moneda), en orden de event_date
     carry_in: dict = {}       # row id -> arrastre que se suma a esa row
     min_override: dict = {}   # row id -> minimum recomputado (15%) cuando hubo arrastre
+    generated_interest: dict = {}   # "YYYY-MM" -> interés generado ese mes (convertido)
     series: dict = {}
     for r in rows:
         if r["event_date"] is not None and r["source_type"] == "tarjeta_credito":
@@ -204,6 +237,12 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
                 min_override[r["id"]] = minimum
             else:
                 minimum = r["minimum_payment"]
+            interest = monthly_interest(amount, payment, minimum, r["financing_rate"], r["overdue_rate"])
+            if interest > 0:
+                mk = r["event_date"].strftime("%Y-%m")
+                generated_interest[mk] = generated_interest.get(mk, Decimal("0")) + interest * _rate(
+                    db, r["currency_id"], r["event_date"]
+                )
             cin = monthly_carry(amount, payment, minimum, r["financing_rate"], r["overdue_rate"])
 
     open_debts: list[TimelineEntryOut] = []
@@ -248,7 +287,9 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
         if key < current_key:
             # mes pasado: histórico, totales en 0, no arrastra
             available = pending_income = pending_expenses = remaining_spending = balance = Decimal("0")
+            gen = Decimal("0")
         else:
+            gen = generated_interest.get(key, Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if prev_balance is None:  # primer mes >= actual = ancla del efectivo
                 available = _available_now(db, user, today)
                 if key == current_key:
@@ -270,12 +311,23 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
                 pending_expenses=pending_expenses,
                 remaining_spending=remaining_spending,
                 balance=balance,
+                generated_interest=gen,
                 incomes=[e for e in b["incomes"] if e.amount != 0],
                 expenses=[e for e in b["expenses"] if e.amount != 0],
             )
         )
 
-    return TimelineOut(months=months, open_debts=[e for e in open_debts if e.amount != 0])
+    healthy_month = _healthy_debt_month(months, current_key)
+    goal_local = None
+    if plan.goal_amount is not None and plan.goal_currency_id is not None:
+        goal_local = plan.goal_amount * _rate(db, plan.goal_currency_id, today)
+    goal_month = _goal_reached_month(months, current_key, healthy_month, goal_local)
+    return TimelineOut(
+        months=months,
+        open_debts=[e for e in open_debts if e.amount != 0],
+        healthy_debt_month=healthy_month,
+        goal_reached_month=goal_month,
+    )
 
 
 EDITABLE_ENTRY_SOURCE_TYPES = (

@@ -7,10 +7,14 @@ from sqlalchemy import select
 from app.models.cash_flow_entry import CashFlowEntry
 from app.models.cash_flow_payment import CashFlowPayment
 from app.models.credit_card import CreditCard
+from app.models.currency import Currency
+from app.models.currency_rate import CurrencyRate
 from app.models.plan import Plan
 from app.models.plan_movement import PlanMovement
 from app.models.user import User
+from app.schemas.cash_flow_entry import MonthOut
 from app.services import cash_flow_entry_service as svc
+from app.services.cash_flow_entry_service import _goal_reached_month, _healthy_debt_month
 
 
 def _headers(client, email="u@b.com"):
@@ -33,9 +37,9 @@ def _plan(db_session, user, *, is_default=False):
     return plan
 
 
-def _card(db_session, user, *, deleted_at=None):
+def _card(db_session, user, *, deleted_at=None, card_network_id=1):
     card = CreditCard(
-        user_id=user.id, institution_id=1, card_network_id=1, current_limit=Decimal("100000.00"),
+        user_id=user.id, institution_id=1, card_network_id=card_network_id, current_limit=Decimal("100000.00"),
         closing_day=13, due_day=25, financing_rate_local=Decimal("10.00"), overdue_rate_local=Decimal("12.00"),
         financing_rate_usd=Decimal("5.00"), overdue_rate_usd=Decimal("6.00"), rates_add_vat=False,
         review_findings="[]", is_ready=True, deleted_at=deleted_at,
@@ -129,7 +133,8 @@ def test_empty_timeline(client, db_session, seed_cc_refs):
     headers = _headers(client)
     user = _last_user(db_session)
     plan = _plan(db_session, user)
-    assert client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json() == {"months": [], "open_debts": []}
+    assert client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json() == {
+        "months": [], "open_debts": [], "healthy_debt_month": None, "goal_reached_month": None}
 
 
 def test_paid_real_and_planned_amount(client, db_session, seed_cc_refs):
@@ -163,7 +168,7 @@ def test_plan_entry_only_for_its_plan(client, db_session, seed_cc_refs):
     _income_entry(db_session, user, plan, event_date=date(2026, 6, 5))  # entry del plan
     # pedido con OTRO plan: la entry de plan no aparece
     body = client.get(f"/cash-flow-entries?plan_id={other.id}", headers=headers).json()
-    assert body == {"months": [], "open_debts": []}
+    assert body == {"months": [], "open_debts": [], "healthy_debt_month": None, "goal_reached_month": None}
     # pedido con SU plan: aparece
     body2 = client.get(f"/cash-flow-entries?plan_id={plan.id}", headers=headers).json()
     assert len(body2["months"][0]["incomes"]) == 1
@@ -611,3 +616,177 @@ def test_carryover_planned_overrides_paid_real(client, db_session, seed_cc_refs)
     jun = next(m for m in out.months if m.month == "2026-06")
     # el planificado (total) domina sobre el real parcial -> sin arrastre -> row en 0 oculta
     assert jun.expenses == []
+
+
+def _june_card(db_session, user, card, *, amount, fin, over, minimum, currency_id=1):
+    e = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal(amount),
+        currency_id=currency_id, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal(fin), overdue_rate=Decimal(over), minimum_payment=Decimal(minimum),
+    )
+    db_session.add(e)
+    db_session.commit()
+    db_session.refresh(e)
+    return e
+
+
+def test_generated_interest_financiacion(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    e = _june_card(db_session, user, card, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    _pay(db_session, e, amount="200.00", plan_id=plan.id, planned_date=date(2026, 6, 20))
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    assert jun.generated_interest == Decimal("10.80")  # 800 * 0.12/12 * 1.35
+
+
+def test_generated_interest_mora(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    e = _june_card(db_session, user, card, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    _pay(db_session, e, amount="50.00", plan_id=plan.id, planned_date=date(2026, 6, 20))
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    assert jun.generated_interest == Decimal("25.65")  # pago < mínimo -> mora 24%
+
+
+def test_generated_interest_pagada_entera(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    _june_card(db_session, user, card, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))  # sin plan -> asume full
+    jun = next(m for m in out.months if m.month == "2026-06")
+    assert jun.generated_interest == Decimal("0.00")
+
+
+def test_generated_interest_usd_convertido(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    db_session.add(Currency(id=3, country_code="UY", name="Dólar",
+                            is_legal_tender=False, allowed_in_credit_card=True))
+    db_session.add(CurrencyRate(currency_id=3, rate_date=date(2026, 6, 29), value=Decimal("40.00")))
+    db_session.commit()
+    e = _june_card(db_session, user, card, amount="100.00", fin="5.00", over="6.00",
+                   minimum="10.00", currency_id=3)
+    _pay(db_session, e, amount="20.00", plan_id=plan.id, planned_date=date(2026, 6, 20))
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    # 80 * 0.05/12 * 1.35 = 0.45 USD * 40 = 18.00
+    assert jun.generated_interest == Decimal("18.00")
+
+
+def test_generated_interest_suma_varias_tarjetas(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    # dos tarjetas distintas: la 2da en otra red (uq por user+institución+red)
+    from app.models.credit_card_network import CreditCardNetwork
+    db_session.add(CreditCardNetwork(id=2, country_code="UY", code="visa", name="Visa"))
+    db_session.commit()
+    c1 = _card(db_session, user)
+    c2 = _card(db_session, user, card_network_id=2)
+    e1 = _june_card(db_session, user, c1, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    e2 = _june_card(db_session, user, c2, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    _pay(db_session, e1, amount="200.00", plan_id=plan.id, planned_date=date(2026, 6, 20))
+    _pay(db_session, e2, amount="200.00", plan_id=plan.id, planned_date=date(2026, 6, 20))
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    assert jun.generated_interest == Decimal("21.60")  # 10.80 * 2
+
+
+def test_generated_interest_mes_pasado_cero(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    e = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(e)
+    db_session.commit()
+    db_session.refresh(e)
+    _pay(db_session, e, amount="200.00", plan_id=plan.id, planned_date=date(2026, 5, 20))
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    mayo = next(m for m in out.months if m.month == "2026-05")
+    assert mayo.generated_interest == Decimal("0.00")  # histórico -> 0
+
+
+_Z = Decimal("0")
+
+
+def _mo(key, *, balance="0", gen="0"):
+    return MonthOut(
+        month=key, available=_Z, pending_income=_Z, pending_expenses=_Z, remaining_spending=_Z,
+        balance=Decimal(balance), incomes=[], expenses=[], generated_interest=Decimal(gen),
+    )
+
+
+def test_healthy_despues_del_ultimo_interes():
+    months = [_mo("2026-06", gen="10"), _mo("2026-07", gen="5"), _mo("2026-08", gen="0"), _mo("2026-09", gen="0")]
+    assert _healthy_debt_month(months, "2026-06") == "2026-08"
+
+
+def test_healthy_nunca_en_horizonte():
+    months = [_mo("2026-06", gen="10"), _mo("2026-07", gen="5")]  # interés hasta el último mes
+    assert _healthy_debt_month(months, "2026-06") is None
+
+
+def test_healthy_ya_sano_desde_el_arranque():
+    months = [_mo("2026-06", gen="0"), _mo("2026-07", gen="0")]
+    assert _healthy_debt_month(months, "2026-06") == "2026-06"
+
+
+def test_goal_alcanzado_despues_de_sano():
+    months = [_mo("2026-06", balance="100", gen="10"), _mo("2026-07", balance="600", gen="0"),
+              _mo("2026-08", balance="1200", gen="0")]
+    # healthy = 2026-07; objetivo 1000 -> primer mes >= 07 con balance >= 1000 = 2026-08
+    assert _goal_reached_month(months, "2026-06", "2026-07", Decimal("1000")) == "2026-08"
+
+
+def test_goal_balance_antes_de_sano_no_cuenta():
+    months = [_mo("2026-06", balance="5000", gen="10"), _mo("2026-07", balance="600", gen="0")]
+    # 5000 >= 1000 en junio pero junio < healthy 2026-07; julio 600 < 1000 -> None
+    assert _goal_reached_month(months, "2026-06", "2026-07", Decimal("1000")) is None
+
+
+def test_goal_sin_objetivo():
+    months = [_mo("2026-06", balance="5000", gen="0")]
+    assert _goal_reached_month(months, "2026-06", "2026-06", None) is None
+
+
+def test_goal_healthy_null():
+    months = [_mo("2026-06", balance="5000", gen="10")]
+    assert _goal_reached_month(months, "2026-06", None, Decimal("1000")) is None
+
+
+def test_timeline_expone_healthy_y_goal(client, db_session, seed_cc_refs):
+    _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    plan.goal_kind = "ahorro_total"
+    plan.goal_amount = Decimal("5.00")
+    plan.goal_currency_id = 1
+    db_session.commit()
+    _income_entry(db_session, user, plan, event_date=date(2026, 6, 5), amount="50000.00")  # balance +
+    card = _card(db_session, user)
+    jun = _june_card(db_session, user, card, amount="1000.00", fin="12.00", over="24.00", minimum="100.00")
+    _pay(db_session, jun, amount="200.00", plan_id=plan.id, planned_date=date(2026, 6, 20))  # interés en junio
+    db_session.add(CashFlowEntry(  # julio: recibe el carry, sin plan -> asume full -> interés 0
+        user_id=user.id, event_date=date(2026, 7, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    assert out.healthy_debt_month == "2026-07"   # interés en junio, 0 en julio
+    assert out.goal_reached_month == "2026-07"    # primer mes sano con balance >= 5
