@@ -11,6 +11,7 @@ const timeline = ref(null) // { months: [...], open_debts: [...] } | null
 const openMonth = ref(null) // acordeón: solo un mes abierto a la vez
 const error = ref('')
 const notice = ref('')
+const planning = ref(false)
 
 function money0(x) {
   return Math.round(Number(x)) // sin centavos
@@ -88,6 +89,22 @@ async function loadTimeline() {
     }
   } catch (e) {
     error.value = e.message
+  }
+}
+
+async function runPlanning() {
+  if (!selectedPlanId.value || planning.value) return
+  error.value = ''
+  notice.value = ''
+  planning.value = true
+  try {
+    await api.runPlanning(selectedPlanId.value)
+    await loadTimeline()
+    notice.value = 'Pagos organizados.'
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    planning.value = false
   }
 }
 
@@ -195,6 +212,9 @@ async function delPay(p) {
         <select v-model="selectedPlanId" @change="loadTimeline">
           <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
+        <button class="primary" :disabled="!selectedPlanId || planning" @click="runPlanning">
+          {{ planning ? 'Organizando…' : 'Organizar mis pagos' }}
+        </button>
       </div>
 
       <p v-if="timeline && !timeline.months.length && !timeline.open_debts.length" class="muted">

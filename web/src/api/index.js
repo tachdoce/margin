@@ -68,6 +68,9 @@ export const api = {
   copyPlan(id, body) {
     return request('POST', `/plans/${id}/copy`, body)
   },
+  runPlanning(id) {
+    return request('POST', `/plans/${id}/planning`)
+  },
   listMovements(planId) {
     return request('GET', `/plans/${planId}/movements`)
   },
