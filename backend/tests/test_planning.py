@@ -15,7 +15,7 @@ from app.models.user import User
 from app.models.currency import Currency
 from app.models.currency_rate import CurrencyRate
 from app.models.user_financial_settings import UserFinancialSettings
-from app.services.planning import run_planning
+from app.services.planning import clear_planning, run_planning
 
 TODAY = date(2026, 6, 15)
 
@@ -495,3 +495,65 @@ def test_recorrida_borra_solo_autos_y_es_idempotente(db_session, seed_uy_currenc
     assert [a.amount for a in segunda] == [Decimal("250.00")]
     assert primera_ids[0] != segunda[0].id  # regeneradas, no reusadas
     assert db_session.get(CashFlowPayment, manual.id) is not None  # el manual sobrevive
+
+
+# --- clear_planning: borra solo lo auto-generado ---
+
+def test_clear_borra_solo_autos_y_deja_manuales(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    card = _entry(db_session, user, event_date=date(2026, 6, 22), amount="2000.00",
+                  source_type="tarjeta_credito", fin="50.00", over="60.00", minimum="300.00")
+    manual = _pay(db_session, card, "50.00", plan_id=plan.id, planned_date=date(2026, 6, 22))
+    run_planning(db_session, user, plan.id, today=TODAY)
+    assert _autos(db_session, plan)  # hay al menos uno
+
+    clear_planning(db_session, user, plan.id)
+
+    assert _autos(db_session, plan) == []  # autos borrados
+    assert db_session.get(CashFlowPayment, manual.id) is not None  # el manual sobrevive
+
+
+def test_clear_idempotente_sin_autos(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    clear_planning(db_session, user, plan.id)  # no hay nada que borrar -> no rompe
+    assert _autos(db_session, plan) == []
+
+
+def test_clear_plan_inexistente(db_session, seed_uy_currency):
+    user = _user(db_session)
+    with pytest.raises(AppError) as exc:
+        clear_planning(db_session, user, uuid.uuid4())
+    assert exc.value.code == ErrorCode.not_found
+
+
+def test_clear_plan_de_otro_usuario(db_session, seed_uy_currency):
+    user = _user(db_session)
+    other = _user(db_session)
+    plan = _plan(db_session, other)
+    with pytest.raises(AppError) as exc:
+        clear_planning(db_session, user, plan.id)
+    assert exc.value.code == ErrorCode.not_found
+
+
+def test_clear_no_toca_autos_de_otro_plan(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan_a = _plan(db_session, user)
+    plan_b = _plan(db_session, user)
+    card = _entry(db_session, user, event_date=date(2026, 6, 22), amount="2000.00",
+                  source_type="tarjeta_credito", fin="50.00", over="60.00", minimum="300.00")
+    auto_b = _pay(db_session, card, "300.00", plan_id=plan_b.id, planned_date=date(2026, 6, 22), auto=True)
+    clear_planning(db_session, user, plan_a.id)
+    assert db_session.get(CashFlowPayment, auto_b.id) is not None  # el auto del otro plan sobrevive
+
+
+def test_endpoint_delete_204_and_404(client, db_session, seed_uy_currency):
+    token = client.post("/auth/register", json={"email": "clr@x.com", "password": "12345678"}).json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    user = db_session.execute(select(User)).scalars().all()[-1]
+    plan = _plan(db_session, user)
+    assert client.delete(f"/plans/{plan.id}/planning", headers=headers).status_code == 204
+    assert client.delete(f"/plans/{uuid.uuid4()}/planning", headers=headers).status_code == 404

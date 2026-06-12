@@ -362,18 +362,35 @@ def _materialize(db: Session, plan: Plan, entries: list[_Entry]) -> None:
         )
 
 
-def run_planning(db: Session, user: User, plan_id: uuid.UUID, *, today: date | None = None) -> None:
-    today = today or date.today()
+def _require_plan(db: Session, user: User, plan_id: uuid.UUID) -> Plan:
     plan = db.get(Plan, plan_id)
     if plan is None or plan.user_id != user.id:
         raise AppError(ErrorCode.not_found)
+    return plan
 
+
+def _delete_auto_payments(db: Session, plan_id: uuid.UUID) -> None:
+    """Borra los pagos auto-generados del plan. Sin commit (lo maneja quien llama)."""
     db.execute(
         delete(CashFlowPayment).where(
-            CashFlowPayment.plan_id == plan.id,
+            CashFlowPayment.plan_id == plan_id,
             CashFlowPayment.is_auto_generated.is_(True),
         )
     )
+
+
+def clear_planning(db: Session, user: User, plan_id: uuid.UUID) -> None:
+    """Borra los pagos auto-generados del plan sin recalcular. Los manuales no se tocan."""
+    plan = _require_plan(db, user, plan_id)
+    _delete_auto_payments(db, plan.id)
+    db.commit()
+
+
+def run_planning(db: Session, user: User, plan_id: uuid.UUID, *, today: date | None = None) -> None:
+    today = today or date.today()
+    plan = _require_plan(db, user, plan_id)
+
+    _delete_auto_payments(db, plan.id)
 
     month_start = today.replace(day=1)
     entries = _load_entries(db, user, plan, month_start)

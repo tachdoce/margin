@@ -74,3 +74,12 @@ def run_planning(
     db: Session = Depends(get_db),
 ) -> None:
     planning.run_planning(db, user, plan_id)
+
+
+@router.delete("/plans/{plan_id}/planning", status_code=status.HTTP_204_NO_CONTENT)
+def clear_planning(
+    plan_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    planning.clear_planning(db, user, plan_id)
