@@ -192,10 +192,11 @@ def get_timeline(db: Session, user: User, plan_id: uuid.UUID | None, today: date
         for r in serie:
             carry_in[r["id"]] = cin
             amount = r["amount"] + cin
-            if r["paid_real"] > 0:
-                payment = r["paid_real"]
-            elif r["planned_amount"] > 0:
+            # el planificado es la intención total del mes; el real es su ejecución parcial
+            if r["planned_amount"] > 0:
                 payment = r["planned_amount"]
+            elif r["paid_real"] > 0:
+                payment = r["paid_real"]
             else:
                 payment = amount  # sin plan ni pago: se asume pago total -> no arrastra
             if cin > 0:

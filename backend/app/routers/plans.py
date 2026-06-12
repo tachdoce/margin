@@ -7,7 +7,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.schemas.plan import PlanCopyRequest, PlanCreate, PlanOut, PlanUpdate
-from app.services import plan_service
+from app.services import plan_service, planning
 
 router = APIRouter(tags=["plans"])
 
@@ -65,3 +65,12 @@ def copy_plan(
     db: Session = Depends(get_db),
 ) -> PlanOut:
     return PlanOut.from_model(plan_service.copy_plan(db, user, plan_id, payload))
+
+
+@router.post("/plans/{plan_id}/planning", status_code=status.HTTP_204_NO_CONTENT)
+def run_planning(
+    plan_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    planning.run_planning(db, user, plan_id)

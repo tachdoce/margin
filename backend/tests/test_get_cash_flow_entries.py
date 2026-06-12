@@ -584,3 +584,30 @@ def test_carryover_cascades_through_planned_months(client, db_session, seed_cc_r
     assert jun_row.amount == Decimal("810.80")          # arrastre de mayo
     assert jun_row.planned_amount == Decimal("300.00")  # plan parcial
     assert jul_row.amount == Decimal("517.70")          # cascada: resto de junio (510.80) + interés (6.90)
+
+
+def test_carryover_planned_overrides_paid_real(client, db_session, seed_cc_refs):
+    headers = _headers(client)
+    user = _last_user(db_session)
+    plan = _plan(db_session, user)
+    card = _card(db_session, user)
+    prev = CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 5, 29), is_income=False, amount=Decimal("1000.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("100.00"),
+    )
+    db_session.add(prev)
+    db_session.commit()
+    db_session.refresh(prev)
+    _pay(db_session, prev, amount="200.00")  # pago real parcial
+    _pay(db_session, prev, amount="1000.00", plan_id=plan.id, planned_date=date(2026, 5, 29))  # plan: total
+    db_session.add(CashFlowEntry(
+        user_id=user.id, event_date=date(2026, 6, 29), is_income=False, amount=Decimal("0.00"),
+        currency_id=1, source_type="tarjeta_credito", source_id=card.id,
+        financing_rate=Decimal("12.00"), overdue_rate=Decimal("24.00"), minimum_payment=Decimal("0.00"),
+    ))
+    db_session.commit()
+    out = svc.get_timeline(db_session, user, plan.id, today=date(2026, 6, 10))
+    jun = next(m for m in out.months if m.month == "2026-06")
+    # el planificado (total) domina sobre el real parcial -> sin arrastre -> row en 0 oculta
+    assert jun.expenses == []
