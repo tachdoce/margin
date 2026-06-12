@@ -557,3 +557,137 @@ def test_endpoint_delete_204_and_404(client, db_session, seed_uy_currency):
     plan = _plan(db_session, user)
     assert client.delete(f"/plans/{plan.id}/planning", headers=headers).status_code == 204
     assert client.delete(f"/plans/{uuid.uuid4()}/planning", headers=headers).status_code == 404
+
+
+# --- deuda abierta: el excedente ocioso la salda ---
+
+def test_excedente_ocioso_salda_deuda_abierta(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    abierta = _entry(db_session, user, event_date=None, amount="30000.00", source_type="deuda_abierta")
+    run_planning(db_session, user, plan.id, today=TODAY)
+    autos = _auto_for(db_session, plan, abierta)
+    assert [a.amount for a in autos] == [Decimal("30000.00")]
+    assert autos[0].planned_date == date(2026, 6, 30)  # último día del mes
+
+
+def test_open_debt_resta_los_manuales_del_pendiente(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    abierta = _entry(db_session, user, event_date=None, amount="30000.00", source_type="deuda_abierta")
+    _pay(db_session, abierta, "10000.00", plan_id=plan.id, planned_date=date(2026, 6, 5))  # manual
+    run_planning(db_session, user, plan.id, today=TODAY)
+    # pendiente = 30000 - 10000 manual = 20000; el auto cubre solo eso
+    assert [a.amount for a in _auto_for(db_session, plan, abierta)] == [Decimal("20000.00")]
+    # el pago manual sobrevive intacto
+    manuales = db_session.execute(
+        select(CashFlowPayment).where(
+            CashFlowPayment.cash_flow_entry_id == abierta.id,
+            CashFlowPayment.is_auto_generated.is_(False),
+        )
+    ).scalars().all()
+    assert [p.amount for p in manuales] == [Decimal("10000.00")]
+
+
+def test_sobrante_necesario_para_mes_siguiente_no_se_barre(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    # junio deja 50k, pero julio (gasto sin tasa 50k, sin ingreso) lo necesita entero
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    _entry(db_session, user, event_date=date(2026, 7, 10), amount="50000.00", source_type="gasto")
+    abierta = _entry(db_session, user, event_date=None, amount="30000.00", source_type="deuda_abierta")
+    run_planning(db_session, user, plan.id, today=TODAY)
+    assert _auto_for(db_session, plan, abierta) == []
+
+
+def test_salda_en_varios_meses_ultimo_parcial(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    # junio y julio cada uno deja 50k ocioso (julio se sostiene solo); deuda 70k
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    _entry(db_session, user, event_date=date(2026, 7, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    abierta = _entry(db_session, user, event_date=None, amount="70000.00", source_type="deuda_abierta")
+    run_planning(db_session, user, plan.id, today=TODAY)
+    autos = _auto_for(db_session, plan, abierta)
+    assert [a.amount for a in autos] == [Decimal("50000.00"), Decimal("20000.00")]
+    assert [a.planned_date for a in autos] == [date(2026, 6, 30), date(2026, 7, 31)]
+
+
+def test_deuda_mas_vieja_primero(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="15000.00",
+           source_type="ingreso", is_income=True)
+    vieja = _entry(db_session, user, event_date=None, amount="10000.00", source_type="deuda_abierta")
+    vieja.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    nueva = _entry(db_session, user, event_date=None, amount="10000.00", source_type="deuda_abierta")
+    nueva.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    db_session.flush()
+    run_planning(db_session, user, plan.id, today=TODAY)
+    assert [a.amount for a in _auto_for(db_session, plan, vieja)] == [Decimal("10000.00")]
+    assert [a.amount for a in _auto_for(db_session, plan, nueva)] == [Decimal("5000.00")]
+
+
+def test_retiene_para_tasa_futura_sobre_deuda_abierta(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    # junio deja 50k; julio tiene una tarjeta con tasa y demanda -> se retiene, no se barre el 0%
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    _entry(db_session, user, event_date=date(2026, 7, 22), amount="50000.00",
+           source_type="tarjeta_credito", fin="50.00", over="60.00", minimum="100.00")
+    abierta = _entry(db_session, user, event_date=None, amount="30000.00", source_type="deuda_abierta")
+    run_planning(db_session, user, plan.id, today=TODAY)
+    assert _auto_for(db_session, plan, abierta) == []
+
+
+def test_open_debt_autos_idempotentes_y_clear(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    abierta = _entry(db_session, user, event_date=None, amount="30000.00", source_type="deuda_abierta")
+    run_planning(db_session, user, plan.id, today=TODAY)
+    run_planning(db_session, user, plan.id, today=TODAY)  # idempotente
+    assert [a.amount for a in _auto_for(db_session, plan, abierta)] == [Decimal("30000.00")]
+    clear_planning(db_session, user, plan.id)
+    assert _auto_for(db_session, plan, abierta) == []
+
+
+def test_open_debt_en_usd_convierte(db_session, seed_uy_currency):
+    user = _user(db_session)
+    plan = _plan(db_session, user)
+    _cash(db_session, user, "0")
+    _need(db_session, user, "0")
+    db_session.add(Currency(id=3, country_code="UY", name="Dólar",
+                            is_legal_tender=False, allowed_in_credit_card=True))
+    db_session.add(CurrencyRate(currency_id=3, rate_date=TODAY, value=Decimal("40.00")))
+    db_session.flush()
+    _entry(db_session, user, event_date=date(2026, 6, 20), amount="50000.00",
+           source_type="ingreso", is_income=True)
+    abierta = _entry(db_session, user, event_date=None, amount="100.00",
+                     source_type="deuda_abierta", currency_id=3)
+    run_planning(db_session, user, plan.id, today=TODAY)
+    # 100 USD * 40 = 4000 pesos de ocioso -> paga 100 USD
+    assert [a.amount for a in _auto_for(db_session, plan, abierta)] == [Decimal("100.00")]

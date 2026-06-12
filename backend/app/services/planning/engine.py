@@ -156,6 +156,74 @@ def _open_debt_committed(
     return out
 
 
+@dataclass
+class _OpenDebt:
+    entry_id: uuid.UUID
+    fx: Decimal
+    outstanding: Decimal  # en moneda nativa de la deuda
+
+
+def _load_open_debts(db: Session, user: User, plan: Plan, today: date) -> list[_OpenDebt]:
+    """Deudas abiertas del usuario con saldo pendiente (monto − real − manual), más vieja
+    primero. No se joinea obligations (la entry puede no tenerla)."""
+    rows = list(
+        db.execute(
+            select(CashFlowEntry)
+            .where(
+                CashFlowEntry.user_id == user.id,
+                CashFlowEntry.source_type == "deuda_abierta",
+            )
+            .order_by(CashFlowEntry.created_at.asc(), CashFlowEntry.id.asc())
+        ).scalars()
+    )
+    if not rows:
+        return []
+    paid, manual = _payment_sums(db, [r.id for r in rows], plan)
+    debts: list[_OpenDebt] = []
+    for r in rows:
+        outstanding = r.amount - paid.get(r.id, ZERO) - manual.get(r.id, ZERO)
+        if outstanding <= 0:
+            continue
+        debts.append(_OpenDebt(entry_id=r.id, fx=_rate(db, r.currency_id, today), outstanding=outstanding))
+    return debts
+
+
+def _last_day(month: tuple[int, int]) -> date:
+    y, m = month
+    return date(y, m, calendar.monthrange(y, m)[1])
+
+
+def _sweep_open_debts(
+    db: Session, plan: Plan, open_debts: list[_OpenDebt], idle: Decimal, month: tuple[int, int]
+) -> Decimal:
+    """Vuelca `idle` (base convertida) a las deudas abiertas (más vieja primero), generando
+    pagos auto datados el último día del mes. Devuelve el total pagado (base convertida)."""
+    if idle <= 0:
+        return ZERO
+    planned = _last_day(month)
+    total = ZERO
+    for d in open_debts:
+        if idle <= 0:
+            break
+        if d.outstanding <= 0:
+            continue
+        pay_conv = min(d.outstanding * d.fx, idle)
+        pay_native = (pay_conv / d.fx).quantize(Q, rounding=ROUND_DOWN)
+        if pay_native <= 0:
+            continue
+        db.add(
+            CashFlowPayment(
+                cash_flow_entry_id=d.entry_id, amount=pay_native, plan_id=plan.id,
+                planned_date=planned, is_auto_generated=True,
+            )
+        )
+        d.outstanding -= pay_native
+        spent = pay_native * d.fx
+        idle -= spent
+        total += spent
+    return total
+
+
 def _load_entries(db: Session, user: User, plan: Plan, month_start: date) -> list[_Entry]:
     pm_ids = select(PlanMovement.id).where(PlanMovement.plan_id == plan.id)
     rows = list(
@@ -262,15 +330,14 @@ def _apply_carry(entries: list[_Entry], next_entries: list[_Entry]) -> None:
                 n.carry_in += cin
 
 
-def _lookahead_reserve(
+def _lookahead_terms(
     entries: list[_Entry], next_entries: list[_Entry], threshold: Decimal, dial: Decimal,
     open_debt_next: Decimal = ZERO,
-) -> Decimal:
-    """Plata a retener en M para M+1: demanda de M+1 a tasa > threshold que su propia
-    capacidad standalone no cubre. Retener cuesta un mes a la tasa actual X y rinde
-    (Y - X) por mes: se recupera en un mes cuando Y >= 2X (threshold = 2X)."""
+) -> tuple[Decimal, Decimal]:
+    """(demand, surplus) de M+1: demand = monto con tasa > threshold por encima del floor;
+    surplus = caja standalone de M+1 antes de la avalancha discrecional (puede ser < 0)."""
     if not next_entries:
-        return ZERO
+        return ZERO, ZERO
     carry = _carry_preview(entries)
     saved = [(n, n.carry_in) for n in next_entries]
     try:
@@ -289,10 +356,27 @@ def _lookahead_reserve(
             surplus -= max(ZERO, floor - n.paid_real) * n.fx
             if n.financing_rate > threshold:
                 demand += max(ZERO, n.amount - floor) * n.fx
-        return max(ZERO, demand - max(ZERO, surplus))
+        return demand, surplus
     finally:
         for n, cin in saved:
             n.carry_in = cin
+
+
+def _lookahead_reserve(
+    entries: list[_Entry], next_entries: list[_Entry], threshold: Decimal, dial: Decimal,
+    open_debt_next: Decimal = ZERO,
+) -> Decimal:
+    demand, surplus = _lookahead_terms(entries, next_entries, threshold, dial, open_debt_next)
+    return max(ZERO, demand - max(ZERO, surplus))
+
+
+def _reserve_next(
+    entries: list[_Entry], next_entries: list[_Entry], dial: Decimal, open_debt_next: Decimal
+) -> Decimal:
+    """Lo que M+1 necesita recibir arrastrado para sostenerse: faltante de caja + demanda
+    con tasa (umbral 0: el 0% de la deuda abierta cede ante cualquier tasa futura)."""
+    demand, surplus = _lookahead_terms(entries, next_entries, ZERO, dial, open_debt_next)
+    return max(ZERO, demand - max(ZERO, surplus)) + max(ZERO, -surplus)
 
 
 def _seed_initial_carry(db: Session, user: User, plan: Plan, entries: list[_Entry], month_start: date) -> None:
@@ -396,6 +480,7 @@ def run_planning(db: Session, user: User, plan_id: uuid.UUID, *, today: date | N
     entries = _load_entries(db, user, plan, month_start)
     _seed_initial_carry(db, user, plan, entries, month_start)
     open_debt = _open_debt_committed(db, user, plan, month_start)
+    open_debt_balances = _load_open_debts(db, user, plan, today)
     months = sorted({e.month for e in entries} | set(open_debt))
     by_month = {m: [e for e in entries if e.month == m] for m in months}
 
@@ -426,7 +511,11 @@ def run_planning(db: Session, user: User, plan_id: uuid.UUID, *, today: date | N
         next_entries = by_month[months[idx + 1]] if idx + 1 < len(months) else []
         open_debt_next = open_debt.get(months[idx + 1], ZERO) if idx + 1 < len(months) else ZERO
         _allocate_month(month_entries, capacity, next_entries, dial, open_debt_next)
-        prev_balance = capacity - _spent(month_entries)
+        sobrante = capacity - _spent(month_entries)
+        reserva = _reserve_next(month_entries, next_entries, dial, open_debt_next)
+        idle = max(ZERO, sobrante - reserva)
+        paid_open = _sweep_open_debts(db, plan, open_debt_balances, idle, m)
+        prev_balance = sobrante - paid_open
         _apply_carry(month_entries, next_entries)
 
     _materialize(db, plan, entries)
