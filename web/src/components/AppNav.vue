@@ -23,13 +23,13 @@ function logout() {
   <nav class="drawer" :class="{ 'drawer-open': open }">
     <router-link class="drawer-item" to="/dashboard" @click="open = false">Dashboard</router-link>
     <router-link class="drawer-item" to="/incomes" @click="open = false">Ingresos</router-link>
-    <router-link class="drawer-item" to="/plans" @click="open = false">Planes</router-link>
     <router-link class="drawer-item" to="/expenses" @click="open = false">Gastos</router-link>
     <router-link class="drawer-item" to="/debts" @click="open = false">Deudas</router-link>
     <router-link class="drawer-item" to="/credit-cards" @click="open = false">Tarjetas</router-link>
-    <router-link class="drawer-item" to="/purchases" @click="open = false">Compras</router-link>
-    <router-link class="drawer-item" to="/cash-flow" @click="open = false">Flujo</router-link>
+    <router-link class="drawer-item" to="/plans" @click="open = false">Planes</router-link>
     <router-link class="drawer-item" to="/wallet" @click="open = false">Billetera</router-link>
+    <router-link class="drawer-item" to="/cash-flow" @click="open = false">Flujo</router-link>
+    <router-link class="drawer-item" to="/purchases" @click="open = false">Compras</router-link>
     <button class="drawer-logout" @click="logout">Cerrar sesión</button>
   </nav>
 </template>
