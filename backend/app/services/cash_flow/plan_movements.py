@@ -12,6 +12,12 @@ from app.models.user import User
 from app.services.cash_flow.date_utils import compute_event_date
 from app.services.cash_flow.rates import effective_rate
 
+# deuda: deuda en cuotas, sin entrada de capital (POST genérico).
+# tarjetazo: igual que deuda, pero modela una compra de impulso desde una tarjeta;
+#   se crea por POST .../movements/tarjetazos y se puede borrar en bloque
+#   (DELETE .../movements/tarjetazos).
+DEBT_KINDS = ("deuda", "tarjetazo")
+
 HORIZON = date(2027, 12, 31)
 
 
@@ -65,6 +71,17 @@ def _target_entries(db: Session, movement: PlanMovement, user: User, today: date
         if today <= ed <= horizon:
             targets.append(_target("plan_movimiento_entrada", ed, True, movement.principal_amount))
         # cuotas (N filas, corren por finde, con tasa efectiva)
+        vat_rate = db.get(Country, user.country_code).vat_rate
+        fin = effective_rate(movement.financing_rate, movement.rates_add_vat, vat_rate)
+        over = effective_rate(movement.overdue_rate, movement.rates_add_vat, vat_rate)
+        for ed in _monthly_dates(movement.installment_start_date, movement.total_installments, horizon, shift=True):
+            if today <= ed <= horizon:
+                targets.append(
+                    _target("plan_movimiento", ed, False, movement.installment_amount, fin, over)
+                )
+
+    elif kind in DEBT_KINDS:
+        # como préstamo pero SIN la entrada de capital: solo cuotas de salida
         vat_rate = db.get(Country, user.country_code).vat_rate
         fin = effective_rate(movement.financing_rate, movement.rates_add_vat, vat_rate)
         over = effective_rate(movement.overdue_rate, movement.rates_add_vat, vat_rate)

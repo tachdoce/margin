@@ -268,3 +268,27 @@ def test_reconciliacion_achicar_cuotas(db_session, seed_uy):
     cuotas = [e for e in _entries(db_session, mov) if e.source_type == "plan_movimiento"]
     # 2026-08-01 es sábado -> corre al lunes 2026-08-03; sep cae en día hábil
     assert [c.event_date for c in cuotas] == [date(2026, 8, 3), date(2026, 9, 1)]
+
+
+def test_deuda_solo_cuotas_sin_entrada(db_session, seed_uy):
+    mov = _seed_movement(
+        db_session,
+        kind="deuda",
+        principal_amount=Decimal("0.00"),
+        start_date=date(2026, 8, 1),
+        installment_amount=Decimal("5000.00"),
+        installment_start_date=date(2026, 8, 1),
+        total_installments=3,
+        financing_rate=Decimal("72.00"),
+        overdue_rate=Decimal("85.00"),
+        rates_add_vat=True,
+    )
+    materialize_plan_movement(db_session, mov.id, today=date(2026, 7, 1), horizon=date(2027, 12, 31))
+    entries = _entries(db_session, mov)
+    # 3 cuotas de salida, ninguna entrada
+    assert len(entries) == 3
+    assert all(e.source_type == "plan_movimiento" for e in entries)
+    assert all(e.is_income is False for e in entries)
+    assert all(e.amount == Decimal("5000.00") for e in entries)
+    # tasa efectiva con IVA 22%: 72 * 1.22 = 87.84
+    assert entries[0].financing_rate == Decimal("87.84")

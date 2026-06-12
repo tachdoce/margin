@@ -15,7 +15,11 @@ class PlanMovement(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plans.id"), nullable=False)
     kind: Mapped[str] = mapped_column(
-        Enum("ingreso", "deuda_informal", "prestamo", name="plan_movement_kind"), nullable=False
+        Enum(
+            "ingreso", "deuda_informal", "prestamo", "deuda", "tarjetazo",
+            name="plan_movement_kind",
+        ),
+        nullable=False,
     )
     currency_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("currencies.id"), nullable=False)
     description: Mapped[str | None] = mapped_column(String(100), nullable=True)

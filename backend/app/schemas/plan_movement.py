@@ -11,8 +11,8 @@ class PlanMovementCreate(BaseModel):
     kind: str
     currency_id: int
     description: str | None = None
-    principal_amount: Decimal
-    start_date: date
+    principal_amount: Decimal | None = None
+    start_date: date | None = None
     income_duration_months: int | None = None
     installment_amount: Decimal | None = None
     installment_start_date: date | None = None
@@ -20,6 +20,13 @@ class PlanMovementCreate(BaseModel):
     financing_rate: Decimal | None = None
     overdue_rate: Decimal | None = None
     rates_add_vat: bool | None = None
+
+
+class TarjetazoCreate(BaseModel):
+    installment_amount: Decimal
+    total_installments: int
+    credit_card_id: uuid.UUID
+    currency_id: int
 
 
 class PlanMovementUpdate(BaseModel):

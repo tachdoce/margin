@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.schemas.plan_movement import PlanMovementCreate, PlanMovementOut, PlanMovementUpdate
+from app.schemas.plan_movement import (
+    PlanMovementCreate,
+    PlanMovementOut,
+    PlanMovementUpdate,
+    TarjetazoCreate,
+)
 from app.services import plan_movement_service
 
 router = APIRouter(tags=["plan_movements"])
@@ -33,6 +38,20 @@ def list_movements(
     return [PlanMovementOut.from_model(m) for m in plan_movement_service.list_movements(db, user, plan_id)]
 
 
+@router.post(
+    "/plans/{plan_id}/movements/tarjetazos",
+    response_model=PlanMovementOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_tarjetazo(
+    plan_id: uuid.UUID,
+    payload: TarjetazoCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PlanMovementOut:
+    return PlanMovementOut.from_model(plan_movement_service.create_tarjetazo(db, user, plan_id, payload))
+
+
 @router.patch("/plans/{plan_id}/movements/{movement_id}", response_model=PlanMovementOut)
 def update_movement(
     plan_id: uuid.UUID,
@@ -44,6 +63,15 @@ def update_movement(
     return PlanMovementOut.from_model(
         plan_movement_service.update_movement(db, user, plan_id, movement_id, payload)
     )
+
+
+@router.delete("/plans/{plan_id}/movements/tarjetazos")
+def delete_tarjetazos(
+    plan_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return {"deleted": plan_movement_service.delete_tarjetazos(db, user, plan_id)}
 
 
 @router.delete(
