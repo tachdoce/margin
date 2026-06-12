@@ -240,6 +240,12 @@ Verificación transversal: en cada mes donde la plata alcanzó, consumo + reserv
    invisible). Iteración futura del timeline.
 4. **El motor no re-corre solo:** si cambian los datos (compras, resúmenes, pagos), los pagos
    auto quedan desactualizados hasta la próxima corrida manual.
+5. **N+1 en cotizaciones (performance, medido 2026-06-12):** la conversión de moneda hace un
+   `db.get(CurrencyRate, ...)` por entry, ~1 query por entry. Con 297 entries: `run_planning`
+   ≈ 53 ms y ~296 queries (vs. `get_timeline` ≈ 16 ms y ~20 queries, que convierte con un
+   join). Aceptable para un botón on-demand; optimizar recién si crece el horizonte o el motor
+   pasa a correr automático: cargar todas las cotizaciones necesarias en una query al inicio
+   (`WHERE (currency_id, rate_date) IN (...)`) y pasar el dict — bajaría a ~15 queries.
 
 ## 11. Errores
 
