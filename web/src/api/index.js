@@ -71,6 +71,9 @@ export const api = {
   runPlanning(id) {
     return request('POST', `/plans/${id}/planning`)
   },
+  clearPlanning(id) {
+    return request('DELETE', `/plans/${id}/planning`)
+  },
   listMovements(planId) {
     return request('GET', `/plans/${planId}/movements`)
   },

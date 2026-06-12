@@ -235,7 +235,7 @@ select:focus { border-color: var(--accent); }
   border-radius: 10px;
   margin-left: 0.25rem;
 }
-.income-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.income-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
 .income-actions .ghost { padding: 0.35rem 0.75rem; font-size: 0.85rem; }
 .ghost.danger { color: var(--error); }
 .ghost.danger:hover { border-color: var(--error); color: var(--error); }

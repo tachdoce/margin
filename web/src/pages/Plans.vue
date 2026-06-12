@@ -10,8 +10,10 @@ const router = useRouter()
 const plans = ref([])
 const catalogs = ref({ currencies: [] })
 const error = ref('')
+const notice = ref('')
 const loading = ref(false)
 const editingId = ref(null) // null = modo crear
+const clearingId = ref(null) // plan cuyo "Limpiar automatizaciones" está corriendo
 
 function blankForm() {
   return {
@@ -145,6 +147,20 @@ async function remove(plan) {
     error.value = e.message
   }
 }
+
+async function clearPlanning(plan) {
+  error.value = ''
+  notice.value = ''
+  clearingId.value = plan.id
+  try {
+    await api.clearPlanning(plan.id)
+    notice.value = `Automatizaciones de "${plan.name}" borradas.`
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    clearingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -154,6 +170,7 @@ async function remove(plan) {
       <h1>Planes</h1>
 
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="notice" class="muted">{{ notice }}</p>
 
       <!-- Form crear / editar -->
       <form class="income-form" @submit.prevent="submit">
@@ -230,6 +247,8 @@ async function remove(plan) {
             {{ plan.id === activeId ? 'Activo' : 'Seleccionar' }}
           </button>
           <button class="ghost" @click="copy(plan)">Copiar</button>
+        </div>
+        <div class="income-actions">
           <button
             v-if="!plan.is_default"
             class="ghost"
@@ -237,7 +256,10 @@ async function remove(plan) {
           >
             Movimientos
           </button>
-          <button v-if="!plan.is_default" class="ghost danger" @click="remove(plan)">Borrar</button>
+          <button class="ghost" :disabled="clearingId === plan.id" @click="clearPlanning(plan)">
+            {{ clearingId === plan.id ? 'Limpiando…' : 'Limpiar' }}
+          </button>
+          <button v-if="!plan.is_default" class="ghost danger" @click="remove(plan)">Eliminar</button>
         </div>
       </div>
     </div>
