@@ -15,7 +15,7 @@ from app.schemas.income import IncomeCreate, IncomeUpdate
 from app.services.cash_flow.incomes import materialize_income
 from app.services.scoping import require_user_currency
 
-MIN_DESCRIPTION_LENGTH = 8
+MIN_DESCRIPTION_LENGTH = 3
 
 
 def _validate_income_type(db: Session, income_type_id: int | None) -> None:

@@ -21,7 +21,7 @@ _EDITABLE = (
 
 def _validate_common(db, user, *, currency_id, description, principal_amount, usage_preference, installment_amount):
     require_user_currency(db, user, currency_id)  # 422 currency_not_available
-    if description is None or len(description.strip()) < 8:
+    if description is None or len(description.strip()) < 3:
         raise AppError(ErrorCode.description_invalid, field="description")
     if principal_amount is None or principal_amount <= 0:
         raise AppError(ErrorCode.amount_invalid, field="principal_amount")

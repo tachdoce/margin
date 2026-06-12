@@ -121,9 +121,15 @@ def test_create_currency_not_available(client, db_session, seed_uy):
 
 def test_create_description_invalid(client, db_session, seed_uy):
     _seed_refs(db_session)
-    resp = client.post("/incomes", json=_recurring_body(description="corta"), headers=_auth(client))
+    resp = client.post("/incomes", json=_recurring_body(description="ab"), headers=_auth(client))
     assert resp.status_code == 422
     assert resp.json()["code"] == "description_invalid"
+
+
+def test_create_description_minima_3(client, db_session, seed_uy):
+    _seed_refs(db_session)
+    resp = client.post("/incomes", json=_recurring_body(description="UTE"), headers=_auth(client))
+    assert resp.status_code == 201
 
 
 def test_create_amount_invalid(client, db_session, seed_uy):

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError, ErrorCode
 from app.models.priority_level import PriorityLevel
 
-MIN_DESCRIPTION_LENGTH = 8
+MIN_DESCRIPTION_LENGTH = 3
 SYSTEM_PRIORITY_LEVEL = 1  # Ineludible: solo lo asigna el sistema
 
 

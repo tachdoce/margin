@@ -45,9 +45,15 @@ def test_validate_description_trims():
     assert validate_description("  Alquiler depto  ") == "Alquiler depto"
 
 
+def test_validate_description_minima_3():
+    # 3 caracteres (tras strip) ahora es válido
+    assert validate_description("UTE") == "UTE"
+    assert validate_description("  abc  ") == "abc"
+
+
 def test_validate_description_corta():
     with pytest.raises(AppError) as e:
-        validate_description("corta")
+        validate_description("ab")
     assert e.value.code == ErrorCode.description_invalid
 
 

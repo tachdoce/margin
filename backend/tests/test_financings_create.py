@@ -42,8 +42,14 @@ def test_currency_not_available(client, db_session, seed_uy_currency):
 
 
 def test_description_invalid(client, db_session, seed_uy_currency):
-    body = {**NO_SCHEDULE, "description": "corta"}
+    body = {**NO_SCHEDULE, "description": "ab"}
     assert client.post("/financings", json=body, headers=_headers(client)).json()["code"] == "description_invalid"
+
+
+def test_description_minima_3(client, db_session, seed_uy_currency):
+    body = {**NO_SCHEDULE, "description": "UTE"}
+    r = client.post("/financings", json=body, headers=_headers(client))
+    assert r.status_code == 201
 
 
 def test_amount_invalid(client, db_session, seed_uy_currency):

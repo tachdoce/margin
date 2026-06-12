@@ -98,7 +98,7 @@ def test_post_priority_sistema_rechazado(client, db_session, catalog):
 
 def test_post_description_corta(client, db_session, catalog):
     headers = _auth(client)
-    resp = client.post("/expenses", json=_recurrente(description="corta"), headers=headers)
+    resp = client.post("/expenses", json=_recurrente(description="ab"), headers=headers)
     assert resp.status_code == 422
     assert resp.json()["code"] == "description_invalid"
 
