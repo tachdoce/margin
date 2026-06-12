@@ -325,10 +325,18 @@ async function delPay(p) {
         Sin movimientos para este plan.
       </p>
 
+      <!-- hitos de salud financiera -->
+      <div v-if="timeline?.months?.length" class="income-card health-banner">
+        <span class="muted">Deuda sana: <strong>{{ timeline.healthy_debt_month || '—' }}</strong></span>
+        <span class="muted">Objetivo: <strong>{{ timeline.goal_reached_month || '—' }}</strong></span>
+      </div>
+
       <!-- meses -->
       <div v-for="m in timeline?.months || []" :key="m.month" class="income-card">
         <div class="income-head" style="cursor: pointer" @click="toggleMonth(m.month)">
-          <span class="income-desc">{{ openMonth === m.month ? '▾' : '▸' }} {{ m.month }}</span>
+          <span class="income-desc">{{ openMonth === m.month ? '▾' : '▸' }} {{ m.month }}
+            <span v-if="Number(m.generated_interest) > 0" class="badge badge-interest">+interés {{ money0(m.generated_interest) }}</span>
+          </span>
           <span
             v-if="!isPastMonth(m.month)"
             class="income-amount"
@@ -534,6 +542,19 @@ async function delPay(p) {
   background: var(--positive);
   color: #fff;
   margin-left: 6px;
+}
+.badge-interest {
+  background: var(--error);
+  color: #fff;
+  margin-left: 6px;
+}
+.health-banner {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.health-banner strong {
+  color: var(--text);
 }
 .modal-overlay {
   position: fixed;
