@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margin · Tu salud financiera, con un plan</title>
+<style>
+  :root{
+    --indigo:#4f46e5; --indigo-700:#4338ca; --indigo-50:#eef2ff;
+    --ink:#0f172a; --body:#475569; --muted:#94a3b8;
+    --bg:#ffffff; --soft:#f8fafc; --line:#e2e8f0;
+    --green:#16a34a; --amber:#d97706; --red:#dc2626;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       color:var(--body);background:var(--bg);line-height:1.55;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{color:var(--ink);line-height:1.2;letter-spacing:-0.02em}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+  .eyebrow{display:inline-block;font-size:13px;font-weight:600;color:var(--indigo);
+           background:var(--indigo-50);padding:5px 12px;border-radius:999px;letter-spacing:.02em}
+  .btn{display:inline-block;font-weight:600;font-size:15px;padding:13px 22px;border-radius:12px;
+       text-decoration:none;transition:transform .1s ease,box-shadow .2s ease}
+  .btn-primary{background:var(--indigo);color:#fff;box-shadow:0 8px 20px -6px rgba(79,70,229,.5)}
+  .btn-primary:hover{transform:translateY(-1px)}
+  .btn-ghost{color:var(--ink);border:1px solid var(--line)}
+
+  /* NAV */
+  nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.85);
+      backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:800;color:var(--ink);font-size:18px}
+  .logo .dot{width:22px;height:22px;border-radius:7px;background:var(--indigo);
+             display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:14px}
+  .nav-links{display:flex;gap:24px;align-items:center;font-size:14px;font-weight:500}
+  .nav-links a{color:var(--body);text-decoration:none}
+  .nav-links a:hover{color:var(--ink)}
+
+  /* HERO */
+  .hero{background:linear-gradient(180deg,var(--soft),#fff);padding:64px 0 40px;overflow:hidden}
+  .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
+  .hero h1{font-size:46px;margin:18px 0 16px}
+  .hero p.lead{font-size:19px;max-width:30em}
+  .hero .cta{display:flex;gap:12px;margin-top:28px;flex-wrap:wrap}
+  .hero .note{margin-top:16px;font-size:13px;color:var(--muted)}
+
+  /* PHONE MOCK */
+  .phone{justify-self:center;width:300px;background:#0b1220;border-radius:38px;padding:12px;
+         box-shadow:0 30px 60px -20px rgba(15,23,42,.4);border:1px solid #1e293b}
+  .screen{background:var(--soft);border-radius:28px;overflow:hidden}
+  .screen-top{background:var(--indigo);color:#fff;padding:18px 18px 22px}
+  .screen-top .hi{font-size:13px;opacity:.85}
+  .screen-top .bal{font-size:26px;font-weight:800;margin-top:2px}
+  .milestones{display:flex;gap:8px;padding:14px 14px 6px}
+  .ms{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+  .ms .lab{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .ms .val{font-size:14px;font-weight:700;color:var(--ink);margin-top:3px}
+  .ms .val.green{color:var(--green)}
+  .ms .val.indigo{color:var(--indigo)}
+  .tl{padding:6px 14px 16px}
+  .mo{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .mo:last-child{border-bottom:none}
+  .mo .m{font-size:12px;font-weight:600;color:var(--ink);width:60px}
+  .mo .bar{flex:1;height:7px;border-radius:4px;background:#e2e8f0;position:relative;overflow:hidden}
+  .mo .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+  .mo .chip{font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;color:#fff;white-space:nowrap}
+
+  /* SECTIONS */
+  section{padding:68px 0}
+  .section-head{text-align:center;max-width:34em;margin:0 auto 44px}
+  .section-head h2{font-size:34px;margin:10px 0 12px}
+  .section-head p{font-size:17px}
+
+  .problem{background:var(--soft)}
+  .problem .q{font-size:30px;font-weight:800;color:var(--ink);text-align:center;max-width:18em;
+              margin:0 auto;letter-spacing:-0.02em;line-height:1.25}
+  .problem .q span{color:var(--indigo)}
+  .problem .sub{text-align:center;font-size:17px;margin-top:18px;max-width:34em;margin-left:auto;margin-right:auto}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .step .n{width:38px;height:38px;border-radius:11px;background:var(--indigo-50);color:var(--indigo);
+           font-weight:800;display:flex;align-items:center;justify-content:center;font-size:17px}
+  .step h3{font-size:19px;margin:16px 0 8px}
+  .step p{font-size:15px}
+
+  .feats{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .feat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+  .feat .ic{font-size:24px}
+  .feat h3{font-size:17px;margin:12px 0 6px}
+  .feat p{font-size:14px}
+
+  .trust{background:var(--ink);color:#cbd5e1}
+  .trust h2{color:#fff}
+  .trust .section-head p{color:#94a3b8}
+  .trust-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;max-width:760px;margin:0 auto}
+  .tcard{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:18px 20px}
+  .tcard b{color:#fff;display:block;margin-bottom:4px;font-size:15px}
+  .tcard span{font-size:14px;color:#94a3b8}
+
+  .cta-band{background:linear-gradient(135deg,var(--indigo),var(--indigo-700));color:#fff;text-align:center}
+  .cta-band h2{color:#fff;font-size:32px}
+  .cta-band p{font-size:17px;opacity:.9;margin:12px auto 26px;max-width:30em}
+  .cta-band .btn-primary{background:#fff;color:var(--indigo);box-shadow:none}
+
+  footer{padding:34px 0;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+
+  @media(max-width:860px){
+    .hero-grid{grid-template-columns:1fr;gap:32px}
+    .hero h1{font-size:36px}
+    .steps,.feats{grid-template-columns:1fr}
+    .trust-grid{grid-template-columns:1fr}
+    .nav-links{display:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="logo"><span class="dot">M</span> Margin</div>
+    <div class="nav-links">
+      <a href="#problema">El problema</a>
+      <a href="#como">Cómo funciona</a>
+      <a href="#muestra">Qué te muestra</a>
+      <a class="btn btn-primary" style="padding:9px 16px;font-size:14px" href="#empezar">Empezar</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Salud financiera · Uruguay</span>
+      <h1>Te decimos qué pagar primero para deber menos.</h1>
+      <p class="lead">Margin no es otra app de gastos. Arma tu plan mes a mes y te saca de las deudas
+        perdiendo lo mínimo posible en intereses.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#empezar">Empezar gratis</a>
+        <a class="btn btn-ghost" href="#como">Ver cómo funciona</a>
+      </div>
+      <p class="note">Tarjetas, préstamos, financiaciones y hasta lo que le debés a un amigo — todo en un solo plan.</p>
+    </div>
+
+    <!-- Mockup del producto -->
+    <div class="phone">
+      <div class="screen">
+        <div class="screen-top">
+          <div class="hi">Tu plan · junio</div>
+          <div class="bal">$ 12.340 <span style="font-size:13px;font-weight:500;opacity:.8">disponible</span></div>
+        </div>
+        <div class="milestones">
+          <div class="ms">
+            <div class="lab">Deuda sana</div>
+            <div class="val green">Agosto</div>
+          </div>
+          <div class="ms">
+            <div class="lab">Tu objetivo</div>
+            <div class="val indigo">Octubre</div>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="mo"><span class="m">Jun</span><span class="bar"><i style="width:70%;background:var(--red)"></i></span><span class="chip" style="background:var(--red)">interés</span></div>
+          <div class="mo"><span class="m">Jul</span><span class="bar"><i style="width:45%;background:var(--amber)"></i></span><span class="chip" style="background:var(--amber)">bajando</span></div>
+          <div class="mo"><span class="m">Ago</span><span class="bar"><i style="width:12%;background:var(--green)"></i></span><span class="chip" style="background:var(--green)">✓ sana</span></div>
+          <div class="mo"><span class="m">Sep</span><span class="bar"><i style="width:55%;background:var(--indigo)"></i></span><span class="chip" style="background:#cbd5e1;color:#475569">ahorro</span></div>
+          <div class="mo"><span class="m">Oct</span><span class="bar"><i style="width:88%;background:var(--indigo)"></i></span><span class="chip" style="background:var(--indigo)">🎯 meta</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- PROBLEMA -->
+<section id="problema" class="problem">
+  <div class="wrap">
+    <span class="eyebrow" style="display:block;text-align:center;width:fit-content;margin:0 auto 18px">El problema</span>
+    <p class="q">Cuando la plata no alcanza para todo, <span>¿cuál pagás primero?</span></p>
+    <p class="sub">Las apps comunes te muestran en qué se fue el sueldo. Eso es mirar el espejo retrovisor.
+      Margin mira el camino: decide la mejor jugada con la plata que tenés hoy.</p>
+  </div>
+</section>
+
+<!-- COMO FUNCIONA -->
+<section id="como">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Cómo funciona</span>
+      <h2>Tres pasos. El resto lo hace Margin.</h2>
+      <p>Vos cargás tu realidad, elegís una estrategia, y la app organiza tus pagos y te muestra el futuro.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <h3>Cargás lo tuyo</h3>
+        <p>Ingresos, gastos, deudas, tarjetas y financiaciones. Incluso lo informal: lo que le debés a alguien, sin fecha fija.</p>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h3>Elegís un plan</h3>
+        <p>Definís cuánto querés gastar por mes y qué objetivo de ahorro perseguís. Podés probar varios planes y comparar.</p>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h3>Organizás tus pagos</h3>
+        <p>Con un toque, Margin reparte tu plata: paga lo obligatorio, los mínimos, y ataca la deuda más cara primero.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUÉ TE MUESTRA -->
+<section id="muestra" style="background:var(--soft)">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Qué te muestra</span>
+      <h2>Respuestas claras, no planillas.</h2>
+      <p>Margin traduce tus números en las únicas tres cosas que querés saber.</p>
+    </div>
+    <div class="feats">
+      <div class="feat">
+        <div class="ic">🩺</div>
+        <h3>Cuándo salís de la deuda cara</h3>
+        <p>El "mes de deuda sana": a partir de ahí dejás de generar intereses. Una fecha concreta para apuntar.</p>
+      </div>
+      <div class="feat">
+        <div class="ic">🎯</div>
+        <h3>Cuándo llegás a tu objetivo</h3>
+        <p>El mes en que alcanzás tu meta de ahorro, ya libre de deudas. El premio al final del plan.</p>
+      </div>
+      <div class="feat">
+        <div class="ic">💸</div>
+        <h3>Cuánto interés te ahorrás</h3>
+        <p>Mes a mes ves el interés que generás — y cómo baja cuando seguís el plan en vez de pagar a ciegas.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- POR QUÉ CONFIAR -->
+<section class="trust">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Por qué confiar</span>
+      <h2>Hecho con seriedad de plata.</h2>
+      <p>No improvisamos con tu dinero. Cada número está pensado para el contexto real.</p>
+    </div>
+    <div class="trust-grid">
+      <div class="tcard"><b>Pensado para Uruguay</b><span>Tarjetazos, IVA sobre las tasas, días de cierre y vencimiento. Habla tu idioma financiero.</span></div>
+      <div class="tcard"><b>Multi-moneda</b><span>Pesos y dólares conviviendo, con cotizaciones. Todo se compara en la misma vara.</span></div>
+      <div class="tcard"><b>Cuentas exactas</b><span>Sin errores de redondeo: la plata se calcula con precisión, no con aproximaciones.</span></div>
+      <div class="tcard"><b>Estrategia inteligente</b><span>Avalancha por tasa y previsión a futuro: retiene plata hoy si el mes que viene hay algo más caro esperando.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="empezar" class="cta-band">
+  <div class="wrap">
+    <h2>Dejá de adivinar con tu plata.</h2>
+    <p>Armá tu primer plan y mirá en qué mes dejás de deber. Toma cinco minutos.</p>
+    <a class="btn btn-primary" href="#">Empezar gratis</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="logo"><span class="dot">M</span> Margin</div>
+    <span>Tu salud financiera, con un plan. · Uruguay</span>
+  </div>
+</footer>
+
+</body>
+</html>

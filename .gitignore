@@ -25,3 +25,7 @@ dist/
 
 # Visual companion mockups (brainstorming)
 .superpowers/
+
+# Mapa de arquitectura: solo se versiona el HTML generado, no el generador
+/tools/arch_map/*
+!/tools/arch_map/arquitectura.html
