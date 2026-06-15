@@ -177,3 +177,23 @@ def test_ack_409_no_findings(client, db_session, cc_full):
 def test_ack_401(client, cc_full):
     import uuid
     assert client.post(f"/credit-cards/{uuid.uuid4()}/acknowledge", json={}).status_code == 401
+
+
+# ---- prioridad (slice 2) ----
+
+def test_patch_card_priority_y_regla(client, db_session, cc_full):
+    headers = _auth(client)
+    user = _last_user(db_session)
+    card = _make_card(db_session, user, created_at=T1)
+    r = client.patch(f"/credit-cards/{card.id}",
+                     json={"payment_rule": "minimo", "priority": 1}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["payment_rule"] == "minimo" and r.json()["priority"] == 1
+
+
+def test_patch_card_regla_sin_priority_rechaza(client, db_session, cc_full):
+    headers = _auth(client)
+    user = _last_user(db_session)
+    card = _make_card(db_session, user, created_at=T1)
+    r = client.patch(f"/credit-cards/{card.id}", json={"payment_rule": "total"}, headers=headers)
+    assert r.status_code == 422 and r.json()["code"] == "payment_rule_invalid"

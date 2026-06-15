@@ -177,22 +177,19 @@ def test_plan_entry_only_for_its_plan(client, db_session, seed_cc_refs):
 def _open_debt(db_session, user):
     from app.models.obligation import Obligation
     from app.models.obligation_type import ObligationType
-    from app.models.priority_level import PriorityLevel
 
-    db_session.merge(PriorityLevel(level=6, name="Ajustable", description="x"))
     db_session.flush()
     db_session.merge(
         ObligationType(
             id=8, obligation_kind="deuda_abierta", code="informal", name="Informal",
-            description="x", default_priority_level=6, visible=True,
+            description="x", visible=True,
         )
     )
     db_session.flush()
     o = Obligation(
         user_id=user.id,
         obligation_type_id=8,
-        priority_level=6,
-        currency_id=1,
+                currency_id=1,
         amount=Decimal("30000.00"),
         is_monthly_recurring=False,
         due_day=None,

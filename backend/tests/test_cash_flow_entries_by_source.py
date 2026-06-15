@@ -7,7 +7,6 @@ from sqlalchemy import select
 from app.models.cash_flow_entry import CashFlowEntry
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 
 TODAY = date.today()
@@ -26,18 +25,17 @@ def _last_user(db_session):
 
 
 def _seed_types(db_session):
-    db_session.merge(PriorityLevel(level=2, name="Esencial", description="x"))
     db_session.flush()
     db_session.merge(ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                                    description="x", default_priority_level=2, visible=True))
+                                    description="x", visible=True))
     db_session.merge(ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                                    description="x", default_priority_level=2, visible=True))
+                                    description="x", visible=True))
     db_session.commit()
 
 
 def _obligation(db_session, user, *, type_id=1):
     o = Obligation(
-        user_id=user.id, obligation_type_id=type_id, priority_level=2, description="Luz",
+        user_id=user.id, obligation_type_id=type_id, description="Luz",
         is_monthly_recurring=True, currency_id=1, amount=Decimal("3000.00"), shift_weekends=False,
         rates_add_vat=False, is_closed=False, review_findings="[]", is_ready=True,
     )

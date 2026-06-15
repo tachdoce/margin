@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Enum, ForeignKey, SmallInteger, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum, SmallInteger, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -15,7 +15,4 @@ class ObligationType(Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(String(200), nullable=False)
-    default_priority_level: Mapped[int] = mapped_column(
-        SmallInteger, ForeignKey("priority_levels.level"), nullable=False
-    )
     visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

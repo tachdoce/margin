@@ -6,18 +6,16 @@ import pytest
 
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 from app.services.review.obligations import review_obligation
 
 
 @pytest.fixture
 def user(db_session, seed_uy_currency):
-    db_session.add(PriorityLevel(level=4, name="Prioritaria", description="x"))
     db_session.flush()
     db_session.add(
         ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                       description="x", default_priority_level=4, visible=True)
+                       description="x", visible=True)
     )
     db_session.flush()
     u = User(country_code="UY")
@@ -30,8 +28,7 @@ def _deuda(db_session, user, **overrides):
     kwargs = dict(
         user_id=user.id,
         obligation_type_id=10,
-        priority_level=4,
-        currency_id=1,
+                currency_id=1,
         amount=Decimal("5000.00"),
         is_monthly_recurring=False,
         due_day=10,

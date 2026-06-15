@@ -10,7 +10,6 @@ from app.models.country import Country
 from app.models.currency import Currency
 from app.models.institution import Institution
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 
 CRON_FIRST = (date.today() + timedelta(days=20)).isoformat()   # cronograma: arranca futuro
 ONE_TIME = (date.today() + timedelta(days=60)).isoformat()     # pago único futuro
@@ -19,21 +18,17 @@ ONE_TIME = (date.today() + timedelta(days=60)).isoformat()     # pago único fut
 @pytest.fixture
 def catalog(db_session, seed_uy_currency):
     db_session.add_all([
-        PriorityLevel(level=1, name="Ineludible", description="x"),
-        PriorityLevel(level=3, name="Crítica", description="x"),
-        PriorityLevel(level=4, name="Prioritaria", description="x"),
-        PriorityLevel(level=5, name="Manejable", description="x"),
     ])
     db_session.flush()
     db_session.add_all([
         ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                       description="x", default_priority_level=5, visible=True),
+                       description="x", visible=True),
         ObligationType(id=8, obligation_kind="deuda_abierta", code="informal", name="Informal",
-                       description="x", default_priority_level=3, visible=True),
+                       description="x", visible=True),
         ObligationType(id=9, obligation_kind="deuda_abierta", code="otra_abierta", name="Otra",
-                       description="x", default_priority_level=3, visible=True),  # no-informal
+                       description="x", visible=True),  # no-informal
         ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                       description="x", default_priority_level=3, visible=True),
+                       description="x", visible=True),
     ])
     db_session.flush()
     db_session.add(Institution(id=1, country_code="UY", name="Banco UY", visible=True))
@@ -47,7 +42,7 @@ def _auth(client, email="u@b.com"):
 
 def _cronograma(**over):
     body = {
-        "obligation_type_id": 10, "priority_level": 5, "institution_id": 1,
+        "obligation_type_id": 10, "institution_id": 1,
         "description": "Préstamo personal banco", "due_day": 10, "currency_id": 1,
         "amount": "6250.00", "total_installments": 24, "first_due_date": CRON_FIRST,
         "financing_rate": "45.00", "overdue_rate": "60.00", "rates_add_vat": True,
@@ -58,7 +53,7 @@ def _cronograma(**over):
 
 def _pago_unico(**over):
     body = {
-        "obligation_type_id": 10, "priority_level": 4, "description": "Préstamo familiar",
+        "obligation_type_id": 10, "description": "Préstamo familiar",
         "currency_id": 1, "amount": "30000.00", "first_due_date": ONE_TIME,
     }
     body.update(over)
@@ -67,7 +62,7 @@ def _pago_unico(**over):
 
 def _abierta(**over):
     body = {
-        "obligation_type_id": 8, "priority_level": 3, "description": "Plata que le debo a mi viejo",
+        "obligation_type_id": 8, "description": "Plata que le debo a mi viejo",
         "currency_id": 1, "amount": "50000.00",
     }
     body.update(over)
@@ -144,13 +139,6 @@ def test_post_abierta_tipo_no_informal(client, db_session, catalog):
     resp = client.post("/debts", json=_abierta(obligation_type_id=9), headers=headers)
     assert resp.status_code == 422
     assert resp.json()["code"] == "debt_type_invalid"
-
-
-def test_post_priority_sistema(client, db_session, catalog):
-    headers = _auth(client)
-    resp = client.post("/debts", json=_cronograma(priority_level=1), headers=headers)
-    assert resp.status_code == 422
-    assert resp.json()["code"] == "priority_level_invalid"
 
 
 def test_post_institution_otro_pais(client, db_session, catalog):
@@ -334,3 +322,49 @@ def test_patch_vacio_ok(client, db_session, catalog):
     d = _create_cronograma(client, headers)
     resp = client.patch(f"/debts/{d['id']}", json={}, headers=headers)
     assert resp.status_code == 200
+
+
+# --- prioridad (slice 2) ---
+
+def test_post_deuda_con_priority_y_regla(client, db_session, catalog):
+    headers = _auth(client)
+    resp = client.post("/debts", json=_cronograma(payment_rule="minimo", priority=2), headers=headers)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["payment_rule"] == "minimo"
+    assert body["priority"] == 2
+
+
+def test_post_deuda_regla_sin_priority_rechaza(client, db_session, catalog):
+    headers = _auth(client)
+    resp = client.post("/debts", json=_cronograma(payment_rule="total"), headers=headers)
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "payment_rule_invalid"
+
+
+def test_post_deuda_default_ninguno(client, db_session, catalog):
+    headers = _auth(client)
+    body = client.post("/debts", json=_cronograma(), headers=headers).json()
+    assert body["payment_rule"] == "ninguno"
+    assert body["priority"] is None
+
+
+def test_post_abierta_mensual(client, db_session, catalog):
+    headers = _auth(client)
+    resp = client.post("/debts", json=_abierta(
+        payment_rule="mensual", monthly_paydown_amount="2000.00", priority_open_debt=1,
+    ), headers=headers)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["payment_rule"] == "mensual"
+    assert body["monthly_paydown_amount"] == "2000.00"
+    assert body["priority_open_debt"] == 1
+
+
+def test_patch_deuda_payment_rule(client, db_session, catalog):
+    headers = _auth(client)
+    created = _create_cronograma(client, headers)
+    resp = client.patch(f"/debts/{created['id']}",
+                        json={"payment_rule": "minimo", "priority": 5}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["payment_rule"] == "minimo" and resp.json()["priority"] == 5

@@ -6,7 +6,6 @@ from sqlalchemy import select
 
 from app.models.cash_flow_entry import CashFlowEntry
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 
 FUTURE = (date.today() + timedelta(days=40)).isoformat()
 PAST = (date.today() - timedelta(days=2)).isoformat()
@@ -15,16 +14,10 @@ PAST = (date.today() - timedelta(days=2)).isoformat()
 @pytest.fixture
 def catalog(db_session, seed_uy_currency):
     db_session.add_all([
-        PriorityLevel(level=1, name="Ineludible", description="x"),
-        PriorityLevel(level=2, name="Esencial", description="x"),
-        PriorityLevel(level=3, name="Crítica", description="x"),
-    ])
-    db_session.flush()
-    db_session.add_all([
         ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                       description="x", default_priority_level=2, visible=True),
+                       description="x", visible=True),
         ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                       description="x", default_priority_level=3, visible=True),
+                       description="x", visible=True),
     ])
     db_session.flush()
 
@@ -36,7 +29,7 @@ def _auth(client, email="u@b.com"):
 
 def _recurrente(**over):
     body = {
-        "obligation_type_id": 1, "priority_level": 2, "description": "Alquiler depto",
+        "obligation_type_id": 1, "description": "Alquiler depto",
         "is_monthly_recurring": True, "due_day": 10, "currency_id": 1, "amount": "32000.00",
     }
     body.update(over)
@@ -45,7 +38,7 @@ def _recurrente(**over):
 
 def _unico(**over):
     body = {
-        "obligation_type_id": 1, "priority_level": 3, "description": "Matrícula curso",
+        "obligation_type_id": 1, "description": "Matrícula curso",
         "is_monthly_recurring": False, "first_due_date": FUTURE, "currency_id": 1, "amount": "12000.00",
     }
     body.update(over)
@@ -87,13 +80,6 @@ def test_post_kind_deuda_rechazado(client, db_session, catalog):
     resp = client.post("/expenses", json=_recurrente(obligation_type_id=10), headers=headers)
     assert resp.status_code == 422
     assert resp.json()["code"] == "expense_type_invalid"
-
-
-def test_post_priority_sistema_rechazado(client, db_session, catalog):
-    headers = _auth(client)
-    resp = client.post("/expenses", json=_recurrente(priority_level=1), headers=headers)
-    assert resp.status_code == 422
-    assert resp.json()["code"] == "priority_level_invalid"
 
 
 def test_post_description_corta(client, db_session, catalog):

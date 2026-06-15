@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.models.enums import PAYMENT_RULE
 
 
 class CreditCard(Base):
@@ -40,6 +41,8 @@ class CreditCard(Base):
     financing_rate_usd: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     overdue_rate_usd: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     rates_add_vat: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    payment_rule: Mapped[str] = mapped_column(PAYMENT_RULE, nullable=False, server_default="ninguno")
+    priority: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_findings: Mapped[str] = mapped_column(Text, nullable=False)
     user_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

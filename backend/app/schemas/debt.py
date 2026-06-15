@@ -10,7 +10,10 @@ from app.models.obligation import Obligation
 
 class DebtCreate(BaseModel):
     obligation_type_id: int
-    priority_level: int
+    payment_rule: str | None = None
+    priority: int | None = None
+    monthly_paydown_amount: Decimal | None = None
+    priority_open_debt: int | None = None
     institution_id: int | None = None
     description: str
     due_day: int | None = None
@@ -26,7 +29,10 @@ class DebtCreate(BaseModel):
 
 class DebtUpdate(BaseModel):
     obligation_type_id: int | None = None
-    priority_level: int | None = None
+    payment_rule: str | None = None
+    priority: int | None = None
+    monthly_paydown_amount: Decimal | None = None
+    priority_open_debt: int | None = None
     institution_id: int | None = None
     description: str | None = None
     due_day: int | None = None
@@ -44,7 +50,10 @@ class DebtUpdate(BaseModel):
 class DebtOut(BaseModel):
     id: uuid.UUID
     obligation_type_id: int
-    priority_level: int
+    payment_rule: str
+    priority: int | None
+    monthly_paydown_amount: Decimal | None
+    priority_open_debt: int | None
     institution_id: int | None
     description: str | None
     is_monthly_recurring: bool
@@ -67,7 +76,10 @@ class DebtOut(BaseModel):
         return cls(
             id=o.id,
             obligation_type_id=o.obligation_type_id,
-            priority_level=o.priority_level,
+            payment_rule=o.payment_rule,
+            priority=o.priority,
+            monthly_paydown_amount=o.monthly_paydown_amount,
+            priority_open_debt=o.priority_open_debt,
             institution_id=o.institution_id,
             description=o.description,
             is_monthly_recurring=o.is_monthly_recurring,

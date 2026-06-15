@@ -7,12 +7,11 @@ from app.models.currency import Currency
 from app.models.income_type import IncomeType
 from app.models.institution import Institution
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.purchase_category import PurchaseCategory
 from app.models.review_finding_code import ReviewFindingCode
 
 CATALOG_KEYS = {
-    "currencies", "obligation_types", "income_types", "priority_levels",
+    "currencies", "obligation_types", "income_types",
     "institutions", "review_finding_codes", "credit_card_networks", "credit_card_item_types",
     "purchase_categories",
 }
@@ -21,20 +20,14 @@ CATALOG_KEYS = {
 def _seed_catalogs(db_session):
     # segundo país para probar el filtrado por país
     db_session.add(Country(code="AR", name="Argentina", visible=True, vat_rate=Decimal("21.00")))
-    # PriorityLevel primero (ObligationType tiene FK a priority_levels)
-    db_session.add_all([
-        PriorityLevel(level=1, name="Ineludible", description="x"),
-        PriorityLevel(level=2, name="Esencial", description="x"),
-    ])
-    db_session.flush()
     db_session.add_all([
         Currency(id=1, country_code="UY", name="Peso", is_legal_tender=True, allowed_in_credit_card=True,
                  symbol="$", display_decimals=0),
         Currency(id=99, country_code="AR", name="Peso AR", is_legal_tender=True, allowed_in_credit_card=False),
         IncomeType(id=1, code="sueldo", name="Sueldo", visible=True),
         IncomeType(id=2, code="oculto", name="Oculto", visible=False),
-        ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler", description="x", default_priority_level=2, visible=True),
-        ObligationType(id=2, obligation_kind="gasto", code="oculto_ot", name="Oculto", description="x", default_priority_level=2, visible=False),
+        ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler", description="x", visible=True),
+        ObligationType(id=2, obligation_kind="gasto", code="oculto_ot", name="Oculto", description="x", visible=False),
         Institution(id=1, country_code="UY", name="BROU", visible=True),
         Institution(id=2, country_code="AR", name="Banco AR", visible=True),
         ReviewFindingCode(code="amount_above_threshold", message="x"),
@@ -74,9 +67,6 @@ def test_bootstrap_returns_catalogs(client, db_session, seed_uy):
     assert peso["symbol"] == "$"
     assert peso["display_decimals"] == 0
     assert {i["name"] for i in catalogs["institutions"]} == {"BROU"}
-    # priority_levels: todos (incluye el nivel 1)
-    levels = {p["level"] for p in catalogs["priority_levels"]}
-    assert 1 in levels and 2 in levels
     # income_types: el visible=false no aparece
     assert all(it["code"] != "oculto" for it in catalogs["income_types"])
     # obligation_types: el visible=false no aparece

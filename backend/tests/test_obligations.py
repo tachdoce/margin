@@ -9,7 +9,6 @@ from app.models.cash_flow_payment import CashFlowPayment
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
 from app.models.plan import Plan
-from app.models.priority_level import PriorityLevel
 
 FUTURE = (date.today() + timedelta(days=30)).isoformat()
 
@@ -17,18 +16,15 @@ FUTURE = (date.today() + timedelta(days=30)).isoformat()
 @pytest.fixture
 def catalog(db_session, seed_uy_currency):
     db_session.add_all([
-        PriorityLevel(level=3, name="Crítica", description="x"),
-        PriorityLevel(level=4, name="Prioritaria", description="x"),
-        PriorityLevel(level=5, name="Manejable", description="x"),
     ])
     db_session.flush()
     db_session.add_all([
         ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                       description="x", default_priority_level=3, visible=True),
+                       description="x", visible=True),
         ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                       description="x", default_priority_level=5, visible=True),
+                       description="x", visible=True),
         ObligationType(id=8, obligation_kind="deuda_abierta", code="informal", name="Informal",
-                       description="x", default_priority_level=3, visible=True),
+                       description="x", visible=True),
     ])
     db_session.flush()
 
@@ -40,7 +36,7 @@ def _auth(client, email="u@b.com"):
 
 def _crear_gasto(client, headers):
     body = {
-        "obligation_type_id": 1, "priority_level": 3, "description": "Alquiler depto",
+        "obligation_type_id": 1, "description": "Alquiler depto",
         "is_monthly_recurring": True, "due_day": 10, "currency_id": 1, "amount": "32000.00",
     }
     return client.post("/expenses", json=body, headers=headers).json()
@@ -48,7 +44,7 @@ def _crear_gasto(client, headers):
 
 def _crear_abierta(client, headers):
     body = {
-        "obligation_type_id": 8, "priority_level": 3, "description": "Le debo a mi viejo",
+        "obligation_type_id": 8, "description": "Le debo a mi viejo",
         "currency_id": 1, "amount": "50000.00",
     }
     return client.post("/debts", json=body, headers=headers).json()
@@ -57,7 +53,7 @@ def _crear_abierta(client, headers):
 def _crear_deuda_con_findings(client, headers):
     # overdue < financing → finding overdue_lower_than_financing → is_ready false, sin entries
     body = {
-        "obligation_type_id": 10, "priority_level": 5, "description": "Préstamo tasas raras",
+        "obligation_type_id": 10, "description": "Préstamo tasas raras",
         "due_day": 10, "currency_id": 1, "amount": "6250.00", "total_installments": 24,
         "first_due_date": FUTURE, "financing_rate": "45.00", "overdue_rate": "30.00",
     }
@@ -114,7 +110,7 @@ def test_delete_con_hija(client, db_session, catalog):
     parent = _crear_gasto(client, headers)
     user_id = _obligation(db_session, parent["id"]).user_id
     child = Obligation(
-        user_id=user_id, obligation_type_id=10, priority_level=5, currency_id=1,
+        user_id=user_id, obligation_type_id=10, currency_id=1,
         amount=Decimal("100.00"), is_monthly_recurring=False, shift_weekends=False,
         rates_add_vat=True, is_closed=False, review_findings="[]", is_ready=False,
         origin_obligation_id=parent["id"],

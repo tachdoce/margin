@@ -7,7 +7,6 @@ from app.models.currency import Currency
 from app.models.income_type import IncomeType
 from app.models.institution import Institution
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.purchase_category import PurchaseCategory
 from app.models.review_finding_code import ReviewFindingCode
 from app.models.user import User
@@ -24,9 +23,6 @@ def build_catalogs(db: Session, user: User) -> dict:
         ),
         "income_types": list(
             db.execute(select(IncomeType).where(IncomeType.visible.is_(True)).order_by(IncomeType.id)).scalars()
-        ),
-        "priority_levels": list(
-            db.execute(select(PriorityLevel).order_by(PriorityLevel.level)).scalars()
         ),
         "institutions": list(
             db.execute(

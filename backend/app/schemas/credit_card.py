@@ -14,6 +14,8 @@ class CreditCardOut(BaseModel):
     id: uuid.UUID
     institution_id: int
     card_network_id: int
+    payment_rule: str
+    priority: int | None
     current_limit: Decimal
     closing_day: int
     due_day: int
@@ -32,6 +34,8 @@ class CreditCardOut(BaseModel):
             id=c.id,
             institution_id=c.institution_id,
             card_network_id=c.card_network_id,
+            payment_rule=c.payment_rule,
+            priority=c.priority,
             current_limit=c.current_limit,
             closing_day=c.closing_day,
             due_day=c.due_day,
@@ -51,6 +55,8 @@ class CreditCardUpdate(BaseModel):
     card_network_id: int | None = None
     closing_day: int | None = None
     due_day: int | None = None
+    payment_rule: str | None = None
+    priority: int | None = None
 
 
 class StatementOut(BaseModel):

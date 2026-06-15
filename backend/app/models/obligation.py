@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.models.enums import PAYMENT_RULE
 
 
 class Obligation(Base):
@@ -18,9 +19,6 @@ class Obligation(Base):
     )
     obligation_type_id: Mapped[int] = mapped_column(
         SmallInteger, ForeignKey("obligation_types.id"), nullable=False
-    )
-    priority_level: Mapped[int] = mapped_column(
-        SmallInteger, ForeignKey("priority_levels.level"), nullable=False
     )
     institution_id: Mapped[int | None] = mapped_column(
         SmallInteger, ForeignKey("institutions.id"), nullable=True
@@ -36,6 +34,10 @@ class Obligation(Base):
     financing_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     overdue_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     rates_add_vat: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    payment_rule: Mapped[str] = mapped_column(PAYMENT_RULE, nullable=False, server_default="ninguno")
+    priority: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    monthly_paydown_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    priority_open_debt: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     origin_obligation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("obligations.id"), nullable=True, index=True
     )

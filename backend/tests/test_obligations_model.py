@@ -7,29 +7,25 @@ from sqlalchemy.exc import IntegrityError
 from app.models.currency import Currency
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 
 
 @pytest.fixture
 def refs(db_session, seed_uy_currency):
-    """Siembra priority_levels, obligation_types (1 por kind) y un usuario. Devuelve el usuario."""
+    """Siembra obligation_types (1 por kind) y un usuario. Devuelve el usuario."""
     db_session.add_all(
         [
-            PriorityLevel(level=2, name="Esencial", description="x"),
-            PriorityLevel(level=4, name="Obligación prioritaria", description="x"),
-            PriorityLevel(level=6, name="Ajustable", description="x"),
         ]
     )
     db_session.flush()
     db_session.add_all(
         [
             ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                           description="x", default_priority_level=2, visible=True),
+                           description="x", visible=True),
             ObligationType(id=10, obligation_kind="deuda", code="prestamo", name="Préstamo",
-                           description="x", default_priority_level=4, visible=True),
+                           description="x", visible=True),
             ObligationType(id=8, obligation_kind="deuda_abierta", code="informal", name="Informal",
-                           description="x", default_priority_level=6, visible=True),
+                           description="x", visible=True),
         ]
     )
     db_session.flush()
@@ -59,8 +55,7 @@ def test_insert_gasto_recurrente(db_session, refs):
     o = Obligation(
         **_base_kwargs(user),
         obligation_type_id=1,
-        priority_level=2,
-        due_day=5,
+                due_day=5,
     )
     o.is_monthly_recurring = True  # _base_kwargs lo trae en False; lo sobrescribimos
     db_session.add(o)
@@ -76,8 +71,7 @@ def test_insert_deuda_con_cronograma(db_session, refs):
     o = Obligation(
         **_base_kwargs(user),
         obligation_type_id=10,
-        priority_level=4,
-        due_day=10,
+                due_day=10,
         total_installments=12,
         first_due_date=date(2026, 8, 1),
         financing_rate=Decimal("3.50"),
@@ -95,8 +89,7 @@ def test_insert_deuda_abierta(db_session, refs):
     o = Obligation(
         **_base_kwargs(user),
         obligation_type_id=8,
-        priority_level=6,
-    )
+            )
     db_session.add(o)
     db_session.flush()
     db_session.refresh(o)
@@ -106,7 +99,7 @@ def test_insert_deuda_abierta(db_session, refs):
 
 def test_invalid_obligation_type_fk(db_session, refs):
     user = refs
-    o = Obligation(**_base_kwargs(user), obligation_type_id=999, priority_level=2)
+    o = Obligation(**_base_kwargs(user), obligation_type_id=999, )
     db_session.add(o)
     with pytest.raises(IntegrityError):
         db_session.flush()
@@ -114,12 +107,11 @@ def test_invalid_obligation_type_fk(db_session, refs):
 
 def test_self_reference_origin(db_session, refs):
     user = refs
-    parent = Obligation(**_base_kwargs(user), obligation_type_id=10, priority_level=4)
+    parent = Obligation(**_base_kwargs(user), obligation_type_id=10, )
     db_session.add(parent)
     db_session.flush()
     child = Obligation(
-        **_base_kwargs(user), obligation_type_id=10, priority_level=4,
-        origin_obligation_id=parent.id,
+        **_base_kwargs(user), obligation_type_id=10,         origin_obligation_id=parent.id,
     )
     db_session.add(child)
     db_session.flush()
@@ -131,7 +123,7 @@ def test_not_null_amount(db_session, refs):
     user = refs
     kwargs = _base_kwargs(user)
     del kwargs["amount"]
-    o = Obligation(**kwargs, obligation_type_id=1, priority_level=2)
+    o = Obligation(**kwargs, obligation_type_id=1, )
     db_session.add(o)
     with pytest.raises(IntegrityError):
         db_session.flush()

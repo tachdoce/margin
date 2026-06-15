@@ -14,7 +14,6 @@ from app.services.obligation_common import (
     validate_amount,
     validate_description,
     validate_due_day,
-    validate_priority,
 )
 from app.services.review.obligations import review_obligation
 from app.services.scoping import require_user_currency
@@ -53,7 +52,6 @@ def _gasto_query(user: User):
 def create_expense(db: Session, user: User, payload: ExpenseCreate) -> Obligation:
     _require_gasto_type(db, payload.obligation_type_id)
     require_user_currency(db, user, payload.currency_id)
-    validate_priority(db, payload.priority_level)
     description = validate_description(payload.description)
     validate_amount(payload.amount)
     validate_due_day(payload.due_day)
@@ -63,7 +61,6 @@ def create_expense(db: Session, user: User, payload: ExpenseCreate) -> Obligatio
     obligation = Obligation(
         user_id=user.id,
         obligation_type_id=payload.obligation_type_id,
-        priority_level=payload.priority_level,
         description=description,
         is_monthly_recurring=payload.is_monthly_recurring,
         due_day=payload.due_day,
@@ -111,8 +108,6 @@ def update_expense(db: Session, user: User, obligation_id: uuid.UUID, payload: E
         _require_gasto_type(db, payload.obligation_type_id)
     if "currency_id" in fields:
         require_user_currency(db, user, payload.currency_id)
-    if "priority_level" in fields:
-        validate_priority(db, payload.priority_level)
     if "description" in fields:
         validate_description(payload.description)
     if "amount" in fields:

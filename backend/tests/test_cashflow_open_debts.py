@@ -7,18 +7,16 @@ from app.models.cash_flow_entry import CashFlowEntry
 from app.models.cash_flow_payment import CashFlowPayment
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 from app.services.cash_flow.open_debts import materialize_open_debt
 
 
 @pytest.fixture
 def user(db_session, seed_uy_currency):
-    db_session.add(PriorityLevel(level=6, name="Ajustable", description="x"))
     db_session.flush()
     db_session.add(
         ObligationType(id=8, obligation_kind="deuda_abierta", code="informal", name="Informal",
-                       description="x", default_priority_level=6, visible=True)
+                       description="x", visible=True)
     )
     db_session.flush()
     u = User(country_code="UY")
@@ -31,8 +29,7 @@ def _open_debt(db_session, user, **overrides):
     kwargs = dict(
         user_id=user.id,
         obligation_type_id=8,
-        priority_level=6,
-        currency_id=1,
+                currency_id=1,
         amount=Decimal("8000.00"),
         is_monthly_recurring=False,
         due_day=None,

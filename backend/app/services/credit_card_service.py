@@ -16,6 +16,7 @@ from app.models.institution import Institution
 from app.models.user import User
 from app.schemas.credit_card import CreditCardUpdate
 from app.services.cash_flow.credit_cards import materialize_credit_card
+from app.services.obligation_common import validate_payment_config
 from app.services.review.credit_cards import review_credit_card
 
 
@@ -89,6 +90,8 @@ def update_credit_card(
         and payload.card_network_id is None
         and payload.closing_day is None
         and payload.due_day is None
+        and payload.payment_rule is None
+        and payload.priority is None
     ):
         raise AppError(ErrorCode.empty_patch)
 
@@ -129,6 +132,13 @@ def update_credit_card(
         card.closing_day = payload.closing_day
     if payload.due_day is not None:
         card.due_day = payload.due_day
+    if payload.payment_rule is not None or payload.priority is not None:
+        rule = payload.payment_rule if payload.payment_rule is not None else card.payment_rule
+        pri = payload.priority if payload.priority is not None else card.priority
+        validate_payment_config("deuda", payment_rule=rule, priority=pri,
+                                monthly_paydown_amount=None, priority_open_debt=None)
+        card.payment_rule = rule
+        card.priority = pri
     db.flush()
 
     review_credit_card(db, card.id)

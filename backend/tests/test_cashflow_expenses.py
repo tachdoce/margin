@@ -9,7 +9,6 @@ from app.models.cash_flow_payment import CashFlowPayment
 from app.models.obligation import Obligation
 from app.models.obligation_type import ObligationType
 from app.models.plan import Plan
-from app.models.priority_level import PriorityLevel
 from app.models.user import User
 from app.services.cash_flow.expenses import materialize_expense
 
@@ -21,14 +20,12 @@ HORIZON = date(2026, 12, 31)  # jun..dic = 7 meses
 def user(db_session, seed_uy_currency):
     db_session.add_all(
         [
-            PriorityLevel(level=2, name="Esencial", description="x"),
-            PriorityLevel(level=3, name="Crítica", description="x"),
         ]
     )
     db_session.flush()
     db_session.add(
         ObligationType(id=1, obligation_kind="gasto", code="alquiler", name="Alquiler",
-                       description="x", default_priority_level=2, visible=True)
+                       description="x", visible=True)
     )
     db_session.flush()
     u = User(country_code="UY")
@@ -41,8 +38,7 @@ def _gasto(db_session, user, **overrides):
     kwargs = dict(
         user_id=user.id,
         obligation_type_id=1,
-        priority_level=2,
-        currency_id=1,
+                currency_id=1,
         amount=Decimal("12000.00"),
         is_monthly_recurring=True,
         due_day=10,

@@ -10,7 +10,6 @@ from app.models.obligation import Obligation
 
 class ExpenseCreate(BaseModel):
     obligation_type_id: int
-    priority_level: int
     description: str
     is_monthly_recurring: bool
     due_day: int | None = None
@@ -22,7 +21,6 @@ class ExpenseCreate(BaseModel):
 
 class ExpenseUpdate(BaseModel):
     obligation_type_id: int | None = None
-    priority_level: int | None = None
     description: str | None = None
     is_monthly_recurring: bool | None = None
     due_day: int | None = None
@@ -36,7 +34,6 @@ class ExpenseUpdate(BaseModel):
 class ExpenseOut(BaseModel):
     id: uuid.UUID
     obligation_type_id: int
-    priority_level: int
     description: str | None
     is_monthly_recurring: bool
     due_day: int | None
@@ -53,7 +50,6 @@ class ExpenseOut(BaseModel):
         return cls(
             id=o.id,
             obligation_type_id=o.obligation_type_id,
-            priority_level=o.priority_level,
             description=o.description,
             is_monthly_recurring=o.is_monthly_recurring,
             due_day=o.due_day,

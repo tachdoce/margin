@@ -17,7 +17,7 @@ from app.services.obligation_common import (
     validate_amount,
     validate_description,
     validate_due_day,
-    validate_priority,
+    validate_payment_config,
 )
 from app.services.review.obligations import review_obligation
 from app.services.scoping import require_user_currency
@@ -95,9 +95,14 @@ def create_debt(db: Session, user: User, payload: DebtCreate) -> Obligation:
     ot = _require_debt_type(db, payload.obligation_type_id)
     kind = ot.obligation_kind
     require_user_currency(db, user, payload.currency_id)
-    validate_priority(db, payload.priority_level)
     description = validate_description(payload.description)
     validate_amount(payload.amount)
+    rule = payload.payment_rule or "ninguno"
+    validate_payment_config(
+        kind, payment_rule=rule, priority=payload.priority,
+        monthly_paydown_amount=payload.monthly_paydown_amount,
+        priority_open_debt=payload.priority_open_debt,
+    )
 
     if kind == "deuda":
         if payload.institution_id is not None:
@@ -109,7 +114,10 @@ def create_debt(db: Session, user: User, payload: DebtCreate) -> Obligation:
         obligation = Obligation(
             user_id=user.id,
             obligation_type_id=payload.obligation_type_id,
-            priority_level=payload.priority_level,
+            payment_rule=rule,
+            priority=payload.priority,
+            monthly_paydown_amount=None,
+            priority_open_debt=None,
             institution_id=payload.institution_id,
             description=description,
             is_monthly_recurring=False,
@@ -137,7 +145,10 @@ def create_debt(db: Session, user: User, payload: DebtCreate) -> Obligation:
         obligation = Obligation(
             user_id=user.id,
             obligation_type_id=payload.obligation_type_id,
-            priority_level=payload.priority_level,
+            payment_rule=rule,
+            priority=None,
+            monthly_paydown_amount=payload.monthly_paydown_amount,
+            priority_open_debt=payload.priority_open_debt,
             institution_id=None,
             description=description,
             is_monthly_recurring=False,
@@ -186,8 +197,6 @@ def update_debt(db: Session, user: User, obligation_id: uuid.UUID, payload: Debt
             raise AppError(ErrorCode.debt_type_invalid, field="obligation_type_id")
     if "currency_id" in fields:
         require_user_currency(db, user, payload.currency_id)
-    if "priority_level" in fields:
-        validate_priority(db, payload.priority_level)
     if "description" in fields:
         validate_description(payload.description)
     if "amount" in fields:
@@ -219,6 +228,14 @@ def update_debt(db: Session, user: User, obligation_id: uuid.UUID, payload: Debt
         if f == "description":
             value = value.strip()
         setattr(obligation, f, value)
+
+    # validación del combo de prioridad sobre el estado ya mergeado
+    if any(f in fields for f in ("payment_rule", "priority", "monthly_paydown_amount", "priority_open_debt")):
+        validate_payment_config(
+            kind, payment_rule=obligation.payment_rule, priority=obligation.priority,
+            monthly_paydown_amount=obligation.monthly_paydown_amount,
+            priority_open_debt=obligation.priority_open_debt,
+        )
 
     # consistencia post-merge por kind
     if kind == "deuda":

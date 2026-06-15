@@ -3,42 +3,50 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import AppError, ErrorCode
-from app.models.priority_level import PriorityLevel
 from app.services.obligation_common import (
     validate_amount,
     validate_description,
     validate_due_day,
-    validate_priority,
+    validate_payment_config,
 )
 
 
-@pytest.fixture
-def priorities(db_session):
-    db_session.add_all([
-        PriorityLevel(level=1, name="Ineludible", description="x"),
-        PriorityLevel(level=2, name="Esencial", description="x"),
-    ])
-    db_session.flush()
+def test_payment_config_deuda_ok():
+    validate_payment_config("deuda", payment_rule="minimo", priority=1,
+                            monthly_paydown_amount=None, priority_open_debt=None)  # no levanta
 
 
-def test_validate_priority_ok(db_session, priorities):
-    validate_priority(db_session, 2)  # no levanta
-
-
-def test_validate_priority_sistema(db_session, priorities):
+def test_payment_config_deuda_ninguno_con_priority_rechaza():
     with pytest.raises(AppError) as e:
-        validate_priority(db_session, 1)
-    assert e.value.code == ErrorCode.priority_level_invalid
+        validate_payment_config("deuda", payment_rule="ninguno", priority=1,
+                                monthly_paydown_amount=None, priority_open_debt=None)
+    assert e.value.code == ErrorCode.payment_rule_invalid
 
 
-def test_validate_priority_inexistente(db_session, priorities):
-    with pytest.raises(AppError):
-        validate_priority(db_session, 999)
+def test_payment_config_deuda_regla_invalida():
+    with pytest.raises(AppError) as e:
+        validate_payment_config("deuda", payment_rule="mensual", priority=1,
+                                monthly_paydown_amount=None, priority_open_debt=None)
+    assert e.value.code == ErrorCode.payment_rule_invalid
 
 
-def test_validate_priority_none(db_session, priorities):
-    with pytest.raises(AppError):
-        validate_priority(db_session, None)
+def test_payment_config_abierta_mensual_ok():
+    validate_payment_config("deuda_abierta", payment_rule="mensual", priority=None,
+                            monthly_paydown_amount=Decimal("2000"), priority_open_debt=3)
+
+
+def test_payment_config_abierta_mensual_sin_monto_rechaza():
+    with pytest.raises(AppError) as e:
+        validate_payment_config("deuda_abierta", payment_rule="mensual", priority=None,
+                                monthly_paydown_amount=None, priority_open_debt=None)
+    assert e.value.code == ErrorCode.amount_invalid
+
+
+def test_payment_config_abierta_con_priority_rechaza():
+    with pytest.raises(AppError) as e:
+        validate_payment_config("deuda_abierta", payment_rule="ninguno", priority=2,
+                                monthly_paydown_amount=None, priority_open_debt=None)
+    assert e.value.code == ErrorCode.payment_rule_invalid
 
 
 def test_validate_description_trims():
