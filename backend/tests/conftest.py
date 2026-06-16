@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("BCRYPT_ROUNDS", "4")  # acelera la suite; prod/dev quedan en 12
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
